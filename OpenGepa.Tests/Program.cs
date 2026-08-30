@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using OpenGepa;
 using OpenGepa.Models;
 using OpenGepa.Services;
 
@@ -10,6 +11,9 @@ var tests = new (string Name, Action Run)[]
     ("Backup recovery", TestBackupRecovery),
     ("Last-good recovery", TestLastGoodRecovery),
     ("Profile round trip and icon collision", TestProfileRoundTrip),
+    ("Directory candidate defaults", TestDirectoryCandidateDefaults),
+    ("Editor expansion persistence", TestEditorExpansionPersistence),
+    ("Tree range selection", TestTreeRangeSelection),
 };
 
 var failed = 0;
@@ -94,6 +98,51 @@ static void TestProfileRoundTrip()
     finally { Directory.Delete(path, true); }
 }
 
+static void TestDirectoryCandidateDefaults()
+{
+    True(!DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\setup.exe"));
+    True(!DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\DiskSpd32.exe"));
+    True(!DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\DiskSpd32L.exe"));
+    True(!DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\x86\\Tool.exe"));
+    True(!DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\helper.ps1"));
+    True(DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\DiskSpd64.exe"));
+    True(DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\Tool.lnk"));
+    Equal("Tool.exe", DirectoryCandidateRules.DefaultDisplayName("C:\\Tools\\Tool.exe"));
+}
+
+static void TestEditorExpansionPersistence()
+{
+    Exception? failure = null;
+    var thread = new Thread(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
+        try
+        {
+            var application = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
+            var app = AppService.Create(path); app.Initialize();
+            var group = new GroupNode { Name = "Open" }; group.Children.Add(new FileItem { Name = "Tool.exe", Target = "C:\\Tools\\Tool.exe" });
+            var tab = new LauncherTab { Name = "Editor", Children = new ObservableCollection<LauncherNode> { group } }; app.ReplaceData(Data(tab));
+            var window = new EditorWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; window.Show(); window.RefreshData(tab.Id); window.UpdateLayout();
+            var tree = (System.Windows.Controls.TreeView)window.FindName("EditorTree"); tree.UpdateLayout();
+            var before = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); before.IsExpanded = true; tree.UpdateLayout();
+            True(app.TryCommit(data => ((GroupNode)data.Tabs[0].Children[0]).Children[0].Name = "Renamed.exe", out var error), error);
+            tree.UpdateLayout(); var after = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); True(after.IsExpanded);
+            window.Hide(); application.Shutdown();
+        }
+        catch (Exception ex) { failure = ex; }
+        finally { try { Directory.Delete(path, true); } catch { } }
+    });
+    thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join(); if (failure is not null) throw failure;
+}
+
+static void TestTreeRangeSelection()
+{
+    var visible = new[] { "a", "b", "c", "d" };
+    var first = TreeSelectionLogic.Apply([], visible, null, "b", false, false); Equal("b", first.AnchorId); Equal(1, first.Selected.Count);
+    var range = TreeSelectionLogic.Apply(first.Selected, visible, first.AnchorId, "d", true, false); True(range.Selected.SetEquals(["b", "c", "d"])); Equal("b", range.AnchorId); Equal("d", range.PrimaryId);
+    var toggled = TreeSelectionLogic.Apply(range.Selected, visible, range.AnchorId, "c", false, true); True(toggled.Selected.SetEquals(["b", "d"]));
+}
+
 static void WritePng(string path, System.Drawing.Color color)
 {
     using var image = new System.Drawing.Bitmap(2, 2); using var graphics = System.Drawing.Graphics.FromImage(image); graphics.Clear(color); image.Save(path, System.Drawing.Imaging.ImageFormat.Png);
@@ -109,6 +158,6 @@ static void WithStore(Action<AppPaths, DataStore> action)
     finally { Directory.Delete(path, true); }
 }
 
-static void True(bool value) { if (!value) throw new InvalidOperationException("Expected true."); }
+static void True(bool value, string? message = null) { if (!value) throw new InvalidOperationException(message ?? "Expected true."); }
 static void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new InvalidOperationException($"Expected {expected}, got {actual}."); }
 static void Throws<T>(Action action) where T : Exception { try { action(); } catch (T) { return; } throw new InvalidOperationException($"Expected {typeof(T).Name}."); }
