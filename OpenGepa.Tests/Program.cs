@@ -13,6 +13,7 @@ var tests = new (string Name, Action Run)[]
     ("Profile round trip and icon collision", TestProfileRoundTrip),
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
     ("File dialog filter", TestFileDialogFilter),
+    ("Directory scan root group", TestDirectoryScanRootGroup),
     ("Destination choices", TestDestinationChoices),
     ("Editor expansion persistence", TestEditorExpansionPersistence),
     ("Tree range selection", TestTreeRangeSelection),
@@ -120,6 +121,18 @@ static void TestFileDialogFilter()
     True(!DirectoryCandidateRules.FileItemDialogFilter.Contains("*.*", StringComparison.Ordinal));
 }
 
+static void TestDirectoryScanRootGroup()
+{
+    var destination = new ObservableCollection<LauncherNode>();
+    var first = DirectoryScanRootRules.GetOrCreateRootGroup(destination, "D:\\wintools\\");
+    Equal(1, destination.Count); True(destination[0] is GroupNode { Name: "wintools" });
+    first.Add(new FileItem { Name = "tool.exe", Target = "D:\\wintools\\tool.exe" });
+    var merged = DirectoryScanRootRules.GetOrCreateRootGroup(destination, "D:\\WINTOOLS");
+    True(ReferenceEquals(first, merged)); Equal(1, merged.Count);
+    destination.Add(new FileItem { Name = "other", Target = "D:\\other.exe" });
+    Throws<InvalidDataException>(() => DirectoryScanRootRules.GetOrCreateRootGroup(destination, "D:\\other"));
+}
+
 static void TestDestinationChoices()
 {
     var child = new GroupNode { Name = "Child", Order = 0 };
@@ -128,10 +141,10 @@ static void TestDestinationChoices()
     var tab = new LauncherTab { Name = "Main", Children = new ObservableCollection<LauncherNode> { parent, other } };
     var choices = DestinationOptions.Build(tab);
     Equal(4, choices.Count);
-    Equal("ルート", choices[0].DisplayPath); Equal(null, choices[0].GroupId);
-    Equal(other.Id, choices[1].GroupId); Equal("ルート / Other", choices[1].DisplayPath);
-    Equal(parent.Id, choices[2].GroupId); Equal("ルート / Parent", choices[2].DisplayPath);
-    Equal(child.Id, choices[3].GroupId); Equal("ルート / Parent / Child", choices[3].DisplayPath);
+    Equal("root", choices[0].DisplayPath); Equal(null, choices[0].GroupId);
+    Equal(other.Id, choices[1].GroupId); Equal("root / Other", choices[1].DisplayPath);
+    Equal(parent.Id, choices[2].GroupId); Equal("root / Parent", choices[2].DisplayPath);
+    Equal(child.Id, choices[3].GroupId); Equal("root / Parent / Child", choices[3].DisplayPath);
 }
 
 static void TestEditorExpansionPersistence()
@@ -148,9 +161,10 @@ static void TestEditorExpansionPersistence()
             var tab = new LauncherTab { Name = "Editor", Children = new ObservableCollection<LauncherNode> { group } }; app.ReplaceData(Data(tab));
             var window = new EditorWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; window.Show(); window.RefreshData(tab.Id); window.UpdateLayout();
             var tree = (System.Windows.Controls.TreeView)window.FindName("EditorTree"); tree.UpdateLayout();
-            var before = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); before.IsExpanded = true; tree.UpdateLayout();
+            var root = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); True(root.DataContext is EditorRootNode); root.IsExpanded = true; tree.UpdateLayout();
+            var before = (System.Windows.Controls.TreeViewItem)root.ItemContainerGenerator.ContainerFromItem(root.Items[0]); before.IsExpanded = true; tree.UpdateLayout();
             True(app.TryCommit(data => ((GroupNode)data.Tabs[0].Children[0]).Children[0].Name = "Renamed.exe", out var error), error);
-            tree.UpdateLayout(); var after = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); True(after.IsExpanded);
+            tree.UpdateLayout(); var refreshedRoot = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); var after = (System.Windows.Controls.TreeViewItem)refreshedRoot.ItemContainerGenerator.ContainerFromItem(refreshedRoot.Items[0]); True(refreshedRoot.IsExpanded); True(after.IsExpanded);
             window.Hide(); application.Shutdown();
         }
         catch (Exception ex) { failure = ex; }

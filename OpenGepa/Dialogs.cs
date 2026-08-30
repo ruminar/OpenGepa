@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using OpenGepa.Models;
+using OpenGepa.Services;
 
 namespace OpenGepa;
 
@@ -51,8 +52,8 @@ public static class DestinationOptions
 {
     public static IReadOnlyList<DestinationOption> Build(LauncherTab tab)
     {
-        var result = new List<DestinationOption> { new(null, "ルート") };
-        AddGroups(tab.Children, "ルート", result);
+        var result = new List<DestinationOption> { new(null, "root") };
+        AddGroups(tab.Children, "root", result);
         return result;
     }
 
@@ -101,6 +102,29 @@ public static class DirectoryCandidateRules
         return true;
     }
     public static string DefaultDisplayName(string path) => Path.GetFileName(path);
+}
+
+public static class DirectoryScanRootRules
+{
+    public static string GetRootGroupName(string root)
+    {
+        var trimmed = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var name = Path.GetFileName(trimmed);
+        if (!string.IsNullOrWhiteSpace(name)) return name;
+        return (Path.GetPathRoot(root) ?? "root").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    public static ObservableCollection<LauncherNode> GetOrCreateRootGroup(ObservableCollection<LauncherNode> destination, string root)
+    {
+        var name = GetRootGroupName(root);
+        var normalized = NameRules.Normalize(name);
+        var existing = destination.FirstOrDefault(x => string.Equals(NameRules.Normalize(x.Name), normalized, StringComparison.OrdinalIgnoreCase));
+        if (existing is GroupNode group) return group.Children;
+        if (existing is not null) throw new InvalidDataException($"登録先には「{name}」というGroup以外の項目が存在します。");
+        var created = new GroupNode { Name = name, Order = destination.Count };
+        destination.Add(created);
+        return created.Children;
+    }
 }
 
 public sealed class OperationProgressDialog : Window

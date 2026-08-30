@@ -9,6 +9,11 @@ using OpenGepa.Services;
 
 namespace OpenGepa;
 
+public sealed class EditorRootNode(ObservableCollection<LauncherNode> children)
+{
+    public ObservableCollection<LauncherNode> Children { get; } = children;
+}
+
 public partial class EditorWindow : Window
 {
     private readonly AppService _app; private bool _refreshing;
@@ -19,6 +24,7 @@ public partial class EditorWindow : Window
     private string? _selectionAnchorId;
     private string? _primarySelectedId;
     private string? _pendingTabId;
+    private EditorRootNode? _editorRoot;
     private const string NodeDragFormat = "OpenGepa.LauncherNodeId";
     public EditorWindow(AppService app) { InitializeComponent(); _app = app; EditorTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler((_, _) => Dispatcher.BeginInvoke(RestoreTreeState))); _app.DataChanged += (_, _) => Dispatcher.Invoke(() => { var tabId = _pendingTabId ?? (TabsCombo.SelectedItem as LauncherTab)?.Id; _pendingTabId = null; RefreshData(tabId); }); }
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { e.Cancel = true; Hide(); }
@@ -27,11 +33,12 @@ public partial class EditorWindow : Window
     {
         CaptureExpansionState();
         _refreshing = true; TabsCombo.ItemsSource = _app.Data.Tabs.OrderBy(t => t.Order).ToList(); TabsCombo.SelectedItem = _app.Data.Tabs.FirstOrDefault(t => t.Id == tabId) ?? _app.Data.Tabs.FirstOrDefault(t => t.Id == _app.Data.SelectedTabId) ?? _app.Data.Tabs.FirstOrDefault();
-        _currentTabId = (TabsCombo.SelectedItem as LauncherTab)?.Id; EditorTree.ItemsSource = (TabsCombo.SelectedItem as LauncherTab)?.Children; _refreshing = false; RestoreTreeState();
+        _currentTabId = (TabsCombo.SelectedItem as LauncherTab)?.Id; SetTreeItems(); _refreshing = false; RestoreTreeState();
     }
     private LauncherTab? Tab => TabsCombo.SelectedItem as LauncherTab;
     private HashSet<string> SelectedIds => _currentTabId is null ? [] : _selectedByTab.TryGetValue(_currentTabId, out var selected) ? selected : _selectedByTab[_currentTabId] = new(StringComparer.OrdinalIgnoreCase);
-    private void TabsCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (_refreshing) return; CaptureExpansionState(); _currentTabId = Tab?.Id; _selectionAnchorId = null; _primarySelectedId = null; EditorTree.ItemsSource = Tab?.Children; RestoreTreeState(); }
+    private void TabsCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (_refreshing) return; CaptureExpansionState(); _currentTabId = Tab?.Id; _selectionAnchorId = null; _primarySelectedId = null; SetTreeItems(); RestoreTreeState(); }
+    private void SetTreeItems() { _editorRoot = Tab is null ? null : new EditorRootNode(Tab.Children); EditorTree.ItemsSource = _editorRoot is null ? Array.Empty<EditorRootNode>() : new[] { _editorRoot }; }
     private void NewTab_Click(object sender, RoutedEventArgs e)
     {
         var d = new TextPromptDialog("新しいランチャー", "名前") { Owner = this }; if (d.ShowDialog() != true) return;
@@ -77,7 +84,8 @@ public partial class EditorWindow : Window
     private void ChangeSelectedTarget()
     {
         if (Tab is null || GetSingleSelectedNode() is not LauncherItem selected) return;
-        var d = new TextPromptDialog("targetを変更", "target", selected.Target) { Owner = this }; if (d.ShowDialog() != true) return;
+        var title = selected switch { FileItem => "起動対象を変更", DirectoryItem => "開く場所を変更", UrlItem => "URLを変更", _ => "対象を変更" };
+        var d = new TextPromptDialog(title, "対象", selected.Target) { Owner = this }; if (d.ShowDialog() != true) return;
         var tabId = Tab.Id; Commit(data => ((LauncherItem)FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id)!).Target = d.Value, tabId);
     }
     private void ChangeIcon_Click(object sender, RoutedEventArgs e)
@@ -125,7 +133,7 @@ public partial class EditorWindow : Window
         IsEnabled = false; var scanProgress = new OperationProgressDialog("ディレクトリ走査中", "候補を走査しています…", true) { Owner = this }; scanProgress.Show();
         try
         {
-            var result = await Task.Run(() => Scan(root, scanProgress.Token)); scanProgress.Complete(); var tabId = Tab.Id; var parentId = GetPrimarySelectedNode() is GroupNode selectedGroup ? selectedGroup.Id : null;
+            var result = await Task.Run(() => Scan(root, scanProgress.Token)); scanProgress.Complete(); var tabId = Tab.Id; var parentId = DefaultDestinationId();
             var preview = new ScanPreviewDialog(root, result.Files, result.Skipped, selection => ValidateScanned(tabId, parentId, root, selection)) { Owner = this }; if (preview.ShowDialog() != true) return;
             var selected = preview.Selected;
             var registrationProgress = new OperationProgressDialog("ディレクトリ登録中", "登録準備中…", false) { Owner = this }; registrationProgress.Show();
@@ -153,7 +161,7 @@ public partial class EditorWindow : Window
     {
         _dragStart = e.GetPosition(EditorTree); var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
         if (container?.DataContext is not LauncherNode node || FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(e.OriginalSource as DependencyObject) is not null) return;
-        var visible = EnumerateVisibleContainers(EditorTree).Select(x => ((LauncherNode)x.DataContext).Id).ToList(); var modifiers = Keyboard.Modifiers;
+        var visible = EnumerateVisibleContainers(EditorTree).Where(x => x.DataContext is LauncherNode).Select(x => ((LauncherNode)x.DataContext).Id).ToList(); var modifiers = Keyboard.Modifiers;
         var update = TreeSelectionLogic.Apply(SelectedIds, visible, _selectionAnchorId, node.Id, (modifiers & ModifierKeys.Shift) != 0, (modifiers & ModifierKeys.Control) != 0);
         SelectedIds.Clear(); SelectedIds.UnionWith(update.Selected); _selectionAnchorId = update.AnchorId; _primarySelectedId = update.PrimaryId;
         ApplySelectionVisuals(); container.Focus(); e.Handled = true;
@@ -161,15 +169,37 @@ public partial class EditorWindow : Window
     private void EditorTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
+        if (container?.DataContext is EditorRootNode)
+        {
+            SelectedIds.Clear(); _selectionAnchorId = null; _primarySelectedId = null; ApplySelectionVisuals(); container.Focus();
+            var rootMenu = new ContextMenu();
+            AddCreationItems(rootMenu);
+            container.ContextMenu = rootMenu; rootMenu.IsOpen = true; e.Handled = true; return;
+        }
         if (container?.DataContext is not LauncherNode node) return;
         if (!SelectedIds.Contains(node.Id)) SelectOnly(node.Id, container); else { _primarySelectedId = node.Id; ApplySelectionVisuals(); container.Focus(); }
         var single = GetSelectedNodes().Count == 1;
         var menu = new ContextMenu();
+        if (node is GroupNode) { AddCreationItems(menu); menu.Items.Add(new Separator()); }
         menu.Items.Add(ContextMenuItem("名前を変更", RenameSelectedNode, single));
-        if (node is LauncherItem) menu.Items.Add(ContextMenuItem("targetを変更", ChangeSelectedTarget, single));
+        if (node is FileItem) menu.Items.Add(ContextMenuItem("起動対象を変更", ChangeSelectedTarget, single));
+        else if (node is DirectoryItem) menu.Items.Add(ContextMenuItem("開く場所を変更", ChangeSelectedTarget, single));
+        else if (node is UrlItem) menu.Items.Add(ContextMenuItem("URLを変更", ChangeSelectedTarget, single));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(ContextMenuItem("アイコンを変更", () => ChangeIcon_Click(this, new RoutedEventArgs()), single));
+        if (node is FileItem) menu.Items.Add(ContextMenuItem("アイコンを再取得", () => RetryIcon_Click(this, new RoutedEventArgs()), single));
+        menu.Items.Add(ContextMenuItem("アイコンを標準に戻す", () => ResetIcon_Click(this, new RoutedEventArgs()), single));
         menu.Items.Add(new Separator());
         menu.Items.Add(ContextMenuItem("削除", DeleteSelected, true));
         container.ContextMenu = menu; menu.IsOpen = true; e.Handled = true;
+    }
+    private void AddCreationItems(ContextMenu menu)
+    {
+        menu.Items.Add(ContextMenuItem("Group追加", () => AddGroup_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("File追加", () => AddFile_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("Directory追加", () => AddDirectory_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("URL追加", () => AddUrl_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("ディレクトリ走査", () => Scan_Click(this, new RoutedEventArgs()), true));
     }
     private static System.Windows.Controls.MenuItem ContextMenuItem(string header, Action action, bool enabled)
     {
@@ -260,6 +290,7 @@ public partial class EditorWindow : Window
     private void RestoreTreeState()
     {
         if (_currentTabId is null) return; EditorTree.UpdateLayout();
+        if (EditorTree.Items.Count > 0 && EditorTree.ItemContainerGenerator.ContainerFromItem(EditorTree.Items[0]) is TreeViewItem rootContainer) { rootContainer.IsExpanded = true; rootContainer.UpdateLayout(); }
         var expanded = _expandedByTab.TryGetValue(_currentTabId, out var values) ? values : [];
         var validIds = Tab is null ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : Walk(Tab.Children).Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         SelectedIds.RemoveWhere(id => !validIds.Contains(id)); if (_primarySelectedId is not null && !validIds.Contains(_primarySelectedId)) _primarySelectedId = null; _primarySelectedId ??= SelectedIds.FirstOrDefault(); RestoreContainers(EditorTree, expanded); ApplySelectionVisuals();
@@ -269,7 +300,8 @@ public partial class EditorWindow : Window
         foreach (var item in parent.Items)
         {
             if (parent.ItemContainerGenerator.ContainerFromItem(item) is not TreeViewItem container) continue;
-            if (container.DataContext is GroupNode group && expanded.Contains(group.Id)) { container.IsExpanded = true; container.UpdateLayout(); RestoreContainers(container, expanded); }
+            if (container.DataContext is GroupNode group && expanded.Contains(group.Id)) container.IsExpanded = true;
+            if (container.IsExpanded) { container.UpdateLayout(); RestoreContainers(container, expanded); }
         }
     }
     private void ApplySelectionVisuals()
@@ -310,6 +342,7 @@ public partial class EditorWindow : Window
     }
     private static void AddScanned(ObservableCollection<LauncherNode> target, string root, IReadOnlyList<ScanCandidate> selected)
     {
+        var currentRoot = DirectoryScanRootRules.GetOrCreateRootGroup(target, root);
         foreach (var c in selected)
         {
             var destination = c.DestinationPath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
@@ -317,7 +350,7 @@ public partial class EditorWindow : Window
             var segments = destination.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length == 0 || segments.Any(x => x is "." or "..")) throw new InvalidDataException("登録先相対パスが不正です。");
             var parts = segments.SkipLast(1);
-            var current = target;
+            var current = currentRoot;
             foreach (var part in parts) { var group = current.OfType<GroupNode>().FirstOrDefault(x => x.Name.Equals(part, StringComparison.OrdinalIgnoreCase)); if (group is null) { group = new GroupNode { Name = part, Order = current.Count }; current.Add(group); } current = group.Children; }
             current.Add(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(segments[^1]), Target = c.FullPath, Icon = c.CachedIcon, Order = current.Count });
         }
