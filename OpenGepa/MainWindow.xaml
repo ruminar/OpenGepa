@@ -1,12 +1,41 @@
-﻿<Window x:Class="OpenGepa.MainWindow"
+<Window x:Class="OpenGepa.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:OpenGepa"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
-
+        xmlns:models="clr-namespace:OpenGepa.Models"
+        Title="OpenGepa" Width="480" Height="600" ResizeMode="NoResize"
+        WindowStyle="ToolWindow" ShowInTaskbar="False" Topmost="True"
+        Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown" StateChanged="Window_StateChanged">
+    <Window.Resources>
+        <HierarchicalDataTemplate DataType="{x:Type models:GroupNode}" ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▸" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel>
+        </HierarchicalDataTemplate>
+        <DataTemplate DataType="{x:Type models:FileItem}">
+            <StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▤" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type models:DirectoryItem}">
+            <StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▰" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type models:UrlItem}">
+            <StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="◎" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+    <Grid Background="#FFF7F8FA">
+        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
+        <Border Margin="10" Background="White" BorderBrush="#FFD9DDE5" BorderThickness="1" CornerRadius="8">
+            <Grid>
+                <TreeView x:Name="LauncherTree" BorderThickness="0" Background="Transparent" Padding="8"
+                          MouseLeftButtonUp="LauncherTree_MouseLeftButtonUp" KeyDown="LauncherTree_KeyDown"/>
+                <TextBlock x:Name="EmptyText" Text="表示されているランチャーがありません。&#x0a;トレイの［設定］から表示してください。"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Foreground="#FF667085" Visibility="Collapsed"/>
+            </Grid>
+        </Border>
+        <ListBox x:Name="TabsList" Grid.Column="1" Margin="0,10,10,10" BorderThickness="0" Background="Transparent"
+                 SelectionChanged="TabsList_SelectionChanged" PreviewMouseRightButtonDown="TabsList_PreviewMouseRightButtonDown">
+            <ListBox.ItemTemplate><DataTemplate>
+                <Border Padding="5,12" Margin="0,0,0,6" CornerRadius="7" Background="#FFE7ECF5">
+                    <StackPanel><Grid Width="24" Height="24" HorizontalAlignment="Center"><TextBlock Text="▣" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" TextAlignment="Center" TextWrapping="Wrap" FontSize="12"/></StackPanel>
+                </Border>
+            </DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
     </Grid>
 </Window>

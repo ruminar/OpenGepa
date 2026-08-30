@@ -1,0 +1,17 @@
+global using System;
+global using System.Collections.Generic;
+global using System.IO;
+global using System.Linq;
+global using System.Threading;
+global using System.Threading.Tasks;
+global using Button = System.Windows.Controls.Button;
+global using ContextMenu = System.Windows.Controls.ContextMenu;
+global using DataGridCheckBoxColumn = System.Windows.Controls.DataGridCheckBoxColumn;
+global using DataGridLength = System.Windows.Controls.DataGridLength;
+global using DataGridLengthUnitType = System.Windows.Controls.DataGridLengthUnitType;
+global using DataGridTextColumn = System.Windows.Controls.DataGridTextColumn;
+global using HorizontalAlignment = System.Windows.HorizontalAlignment;
+global using MessageBox = System.Windows.MessageBox;
+global using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+global using Orientation = System.Windows.Controls.Orientation;
+global using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
