@@ -20,8 +20,10 @@
         </DataTemplate>
     </Window.Resources>
     <Grid Background="#FFF7F8FA">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
         <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
-        <Border Margin="10" Background="White" BorderBrush="#FFD9DDE5" BorderThickness="1" CornerRadius="8">
+        <Border x:Name="FutureDashboardHeaderHost" Grid.ColumnSpan="2" Visibility="Collapsed"/>
+        <Border Grid.Row="1" Margin="10" Background="White" BorderBrush="#FFD9DDE5" BorderThickness="1" CornerRadius="8">
             <Grid>
                 <TreeView x:Name="LauncherTree" BorderThickness="0" Background="Transparent" Padding="8"
                           MouseLeftButtonUp="LauncherTree_MouseLeftButtonUp" KeyDown="LauncherTree_KeyDown"/>
@@ -29,7 +31,7 @@
                            HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Foreground="#FF667085" Visibility="Collapsed"/>
             </Grid>
         </Border>
-        <ListBox x:Name="TabsList" Grid.Column="1" Margin="0,10,10,10" BorderThickness="0" Background="Transparent"
+        <ListBox x:Name="TabsList" Grid.Row="1" Grid.Column="1" Margin="0,10,10,10" BorderThickness="0" Background="Transparent"
                  SelectionChanged="TabsList_SelectionChanged" PreviewMouseRightButtonDown="TabsList_PreviewMouseRightButtonDown">
             <ListBox.ItemTemplate><DataTemplate>
                 <Border Padding="5,12" Margin="0,0,0,6" CornerRadius="7" Background="#FFE7ECF5">
