@@ -59,3 +59,4 @@ nunit-*.xml
 .vs/
 bin/
 obj/
+*.csproj.user
