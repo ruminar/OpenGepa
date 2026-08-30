@@ -12,6 +12,7 @@ var tests = new (string Name, Action Run)[]
     ("Last-good recovery", TestLastGoodRecovery),
     ("Profile round trip and icon collision", TestProfileRoundTrip),
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
+    ("File dialog filter", TestFileDialogFilter),
     ("Destination choices", TestDestinationChoices),
     ("Editor expansion persistence", TestEditorExpansionPersistence),
     ("Tree range selection", TestTreeRangeSelection),
@@ -109,6 +110,14 @@ static void TestDirectoryCandidateDefaults()
     True(DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\DiskSpd64.exe"));
     True(DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\Tool.lnk"));
     Equal("Tool.exe", DirectoryCandidateRules.DefaultDisplayName("C:\\Tools\\Tool.exe"));
+}
+
+static void TestFileDialogFilter()
+{
+    True(DirectoryCandidateRules.FileItemDialogFilter.Contains("*.exe", StringComparison.Ordinal));
+    True(DirectoryCandidateRules.FileItemDialogFilter.Contains("*.lnk", StringComparison.Ordinal));
+    True(DirectoryCandidateRules.FileItemDialogFilter.Contains("*.pdf", StringComparison.Ordinal));
+    True(!DirectoryCandidateRules.FileItemDialogFilter.Contains("*.*", StringComparison.Ordinal));
 }
 
 static void TestDestinationChoices()

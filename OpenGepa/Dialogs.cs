@@ -86,6 +86,7 @@ public sealed record ScanValidationResult(string? Error, IReadOnlySet<string> Co
 public static class DirectoryCandidateRules
 {
     private static readonly string[] ScriptExtensions = [".bat", ".cmd", ".ps1"];
+    public const string FileItemDialogFilter = "プログラムとショートカット|*.exe;*.lnk;*.bat;*.cmd;*.ps1|文書|*.pdf;*.txt;*.rtf;*.csv;*.doc;*.docx;*.xls;*.xlsx;*.ppt;*.pptx|画像|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp;*.ico|音声・動画|*.mp3;*.wav;*.flac;*.m4a;*.mp4;*.mkv;*.avi;*.wmv;*.mov";
     public static bool IsInitiallySelected(string path)
     {
         var extension = Path.GetExtension(path);

@@ -41,22 +41,22 @@ public partial class EditorWindow : Window
     {
         if (Tab is null) return; var id = Tab.Id; var d = new TextPromptDialog("名前変更", "名前", Tab.Name) { Owner = this }; if (d.ShowDialog() == true) Commit(data => data.Tabs.First(t => t.Id == id).Name = d.Value, id);
     }
-    private void AddGroup_Click(object sender, RoutedEventArgs e) => AddNode(new GroupNode(), false);
+    private void AddGroup_Click(object sender, RoutedEventArgs e) => AddNode(new GroupNode(), false, true);
     private void AddFile_Click(object sender, RoutedEventArgs e)
     {
-        var open = new OpenFileDialog { Title = "登録するファイル", CheckFileExists = true }; if (open.ShowDialog(this) != true) return;
-        AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(open.FileName), Target = open.FileName }, true);
+        var open = new OpenFileDialog { Title = "登録するファイル", CheckFileExists = true, Filter = DirectoryCandidateRules.FileItemDialogFilter, FilterIndex = 1 }; if (open.ShowDialog(this) != true) return;
+        AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(open.FileName), Target = open.FileName }, true, true);
     }
     private void AddDirectory_Click(object sender, RoutedEventArgs e)
     {
         using var folder = new System.Windows.Forms.FolderBrowserDialog { Description = "登録するディレクトリ" }; if (folder.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-        AddNode(new DirectoryItem { Name = Path.GetFileName(folder.SelectedPath.TrimEnd(Path.DirectorySeparatorChar)), Target = folder.SelectedPath }, true);
+        AddNode(new DirectoryItem { Name = Path.GetFileName(folder.SelectedPath.TrimEnd(Path.DirectorySeparatorChar)), Target = folder.SelectedPath }, true, true);
     }
-    private void AddUrl_Click(object sender, RoutedEventArgs e) => AddNode(new UrlItem(), true);
-    private void AddNode(LauncherNode node, bool target, bool chooseDestination = false, string? initialDestinationId = null)
+    private void AddUrl_Click(object sender, RoutedEventArgs e) => AddNode(new UrlItem(), true, true);
+    private void AddNode(LauncherNode node, bool target, bool chooseDestination = false, string? initialDestinationId = null, bool initialDestinationSpecified = false)
     {
         if (Tab is null) return;
-        var currentDestinationId = chooseDestination ? initialDestinationId : GetPrimarySelectedNode() is GroupNode selectedGroup ? selectedGroup.Id : null;
+        var currentDestinationId = chooseDestination ? initialDestinationSpecified ? initialDestinationId : DefaultDestinationId() : GetPrimarySelectedNode() is GroupNode selectedGroup ? selectedGroup.Id : null;
         var d = new ItemDialog("項目を追加", node.Name, node is LauncherItem i ? i.Target : "", target, chooseDestination ? DestinationOptions.Build(Tab) : null, currentDestinationId) { Owner = this }; if (d.ShowDialog() != true) return;
         node.Name = d.ItemName; if (node is LauncherItem item) item.Target = d.Target;
         var tabId = Tab.Id; var parentId = chooseDestination ? d.DestinationId : currentDestinationId;
@@ -147,7 +147,7 @@ public partial class EditorWindow : Window
     {
         if (e.Handled || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return; var paths = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop)!;
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = container?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
-        foreach (var path in paths) { if (File.Exists(path)) AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(path), Target = path }, true, true, destinationId); else if (Directory.Exists(path)) AddNode(new DirectoryItem { Name = Path.GetFileName(path), Target = path }, true, true, destinationId); }
+        foreach (var path in paths) { if (File.Exists(path)) AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(path), Target = path }, true, true, destinationId, true); else if (Directory.Exists(path)) AddNode(new DirectoryItem { Name = Path.GetFileName(path), Target = path }, true, true, destinationId, true); }
     }
     private void EditorTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -249,6 +249,7 @@ public partial class EditorWindow : Window
     { if (Tab is null) return []; var ids = SelectedIds; return Walk(Tab.Children).Where(x => ids.Contains(x.Id)).ToList(); }
     private LauncherNode? GetSingleSelectedNode() { var selected = GetSelectedNodes(); return selected.Count == 1 ? selected[0] : null; }
     private LauncherNode? GetPrimarySelectedNode() => Tab is null || _primarySelectedId is null ? null : FindNode(Tab.Children, _primarySelectedId);
+    private string? DefaultDestinationId() => GetPrimarySelectedNode() switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
     private void SelectOnly(string id, TreeViewItem container)
     { SelectedIds.Clear(); SelectedIds.Add(id); _selectionAnchorId = id; _primarySelectedId = id; ApplySelectionVisuals(); container.Focus(); }
     private void CaptureExpansionState()
