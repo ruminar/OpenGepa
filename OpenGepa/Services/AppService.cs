@@ -104,7 +104,7 @@ public sealed class TrayService : IDisposable
     private readonly System.Windows.Forms.NotifyIcon _icon = new();
     public TrayService(AppService app)
     {
-        _app = app; _icon.Text = "OpenGepa"; _icon.Icon = SystemIcons.Application;
+        _app = app; _icon.Text = "OpenGepa"; _icon.Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenGepa.exe")) ?? SystemIcons.Application;
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("設定", null, (_, _) => System.Windows.Application.Current.Dispatcher.Invoke(_app.ShowSettings));
         menu.Items.Add("編集", null, (_, _) => System.Windows.Application.Current.Dispatcher.Invoke(() => _app.ShowEditor()));
@@ -188,13 +188,13 @@ public sealed class IconService
         try
         {
             using var icon = TryExtractLargeIcon(target) ?? Icon.ExtractAssociatedIcon(target); if (icon is null) return null;
-            using var bitmap = icon.ToBitmap(); return SaveAsPng(bitmap, name, enlargeSmallImage: true);
+            using var bitmap = icon.ToBitmap(); return SaveAsPng(bitmap, name);
         }
         catch { return null; }
     }
     public string ImportImage(string source, string name)
     {
-        using var image = Image.FromFile(source); return SaveAsPng(image, name, enlargeSmallImage: false);
+        using var image = Image.FromFile(source); return SaveAsPng(image, name);
     }
     private Icon? TryExtractLargeIcon(string target)
     {
@@ -207,16 +207,16 @@ public sealed class IconService
         catch { return null; }
         finally { if (icons[0] != IntPtr.Zero) DestroyIcon(icons[0]); }
     }
-    private string SaveAsPng(Image image, string name, bool enlargeSmallImage)
+    private string SaveAsPng(Image image, string name)
     {
-        using var canvas = new Bitmap(256, 256, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        var scale = Math.Min(1d, Math.Min(256d / image.Width, 256d / image.Height)); var width = Math.Max(1, (int)Math.Round(image.Width * scale)); var height = Math.Max(1, (int)Math.Round(image.Height * scale));
+        using var canvas = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var graphics = Graphics.FromImage(canvas); graphics.Clear(Color.Transparent); graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-        var scale = Math.Min(256d / image.Width, 256d / image.Height); if (!enlargeSmallImage) scale = Math.Min(1d, scale); var w = Math.Max(1, (int)Math.Round(image.Width * scale)); var h = Math.Max(1, (int)Math.Round(image.Height * scale));
-        graphics.DrawImage(image, (256 - w) / 2, (256 - h) / 2, w, h); var (path, stream) = NewFile(name);
+        graphics.DrawImage(image, 0, 0, width, height); var (path, stream) = NewFile(name);
         try
         {
             using (stream) canvas.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
-            using var verify = Image.FromFile(path); if (verify.Width != 256 || verify.Height != 256) throw new InvalidDataException("アイコンのPNG変換を検証できませんでした。");
+            using var verify = Image.FromFile(path); if (verify.Width != width || verify.Height != height || verify.Width > 256 || verify.Height > 256) throw new InvalidDataException("アイコンのPNG変換を検証できませんでした。");
             return Path.GetRelativePath(_paths.BaseDirectory, path).Replace('\\', '/');
         }
         catch { stream.Dispose(); try { File.Delete(path); } catch { } throw; }

@@ -14,6 +14,7 @@
     <FileVersion>0.1.0.0</FileVersion>
     <PublishSingleFile>false</PublishSingleFile>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\OpenGepa.ico</ApplicationIcon>
   </PropertyGroup>
 
 </Project>
