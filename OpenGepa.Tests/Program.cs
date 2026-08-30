@@ -13,6 +13,7 @@ var tests = new (string Name, Action Run)[]
     ("Profile round trip and icon collision", TestProfileRoundTrip),
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
     ("File dialog filter", TestFileDialogFilter),
+    ("Automatic icon fills canvas", TestAutomaticIconFillsCanvas),
     ("Directory scan root group", TestDirectoryScanRootGroup),
     ("Destination choices", TestDestinationChoices),
     ("Editor expansion persistence", TestEditorExpansionPersistence),
@@ -119,6 +120,28 @@ static void TestFileDialogFilter()
     True(DirectoryCandidateRules.FileItemDialogFilter.Contains("*.lnk", StringComparison.Ordinal));
     True(DirectoryCandidateRules.FileItemDialogFilter.Contains("*.pdf", StringComparison.Ordinal));
     True(!DirectoryCandidateRules.FileItemDialogFilter.Contains("*.*", StringComparison.Ordinal));
+}
+
+static void TestAutomaticIconFillsCanvas()
+{
+    var source = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "notepad.exe");
+    True(File.Exists(source), "notepad.exe was not found.");
+    var path = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
+    try
+    {
+        var paths = new AppPaths(path); paths.EnsureWritable(); var icon = new IconService(paths).TryExtract(source, "notepad.exe");
+        True(icon is not null); using var image = new System.Drawing.Bitmap(Path.Combine(path, icon!.Replace('/', Path.DirectorySeparatorChar)));
+        var bounds = AlphaBounds(image); True(bounds.Width >= 200 && bounds.Height >= 200, $"Icon content is too small: {bounds.Width}x{bounds.Height}");
+    }
+    finally { Directory.Delete(path, true); }
+}
+
+static System.Drawing.Rectangle AlphaBounds(System.Drawing.Bitmap image)
+{
+    var left = image.Width; var top = image.Height; var right = -1; var bottom = -1;
+    for (var y = 0; y < image.Height; y++) for (var x = 0; x < image.Width; x++) if (image.GetPixel(x, y).A != 0) { left = Math.Min(left, x); top = Math.Min(top, y); right = Math.Max(right, x); bottom = Math.Max(bottom, y); }
+    if (right < left || bottom < top) throw new InvalidOperationException("Icon has no visible pixels.");
+    return System.Drawing.Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
 }
 
 static void TestDirectoryScanRootGroup()

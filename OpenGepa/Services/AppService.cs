@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
@@ -186,20 +187,31 @@ public sealed class IconService
     {
         try
         {
-            using var icon = Icon.ExtractAssociatedIcon(target); if (icon is null) return null;
-            using var bitmap = icon.ToBitmap(); return SaveAsPng(bitmap, name);
+            using var icon = TryExtractLargeIcon(target) ?? Icon.ExtractAssociatedIcon(target); if (icon is null) return null;
+            using var bitmap = icon.ToBitmap(); return SaveAsPng(bitmap, name, enlargeSmallImage: true);
         }
         catch { return null; }
     }
     public string ImportImage(string source, string name)
     {
-        using var image = Image.FromFile(source); return SaveAsPng(image, name);
+        using var image = Image.FromFile(source); return SaveAsPng(image, name, enlargeSmallImage: false);
     }
-    private string SaveAsPng(Image image, string name)
+    private Icon? TryExtractLargeIcon(string target)
+    {
+        var icons = new[] { IntPtr.Zero }; var ids = new uint[1];
+        try
+        {
+            if (PrivateExtractIcons(target, 0, 256, 256, icons, ids, 1, 0) == 0 || icons[0] == IntPtr.Zero) return null;
+            using var borrowed = Icon.FromHandle(icons[0]); return (Icon)borrowed.Clone();
+        }
+        catch { return null; }
+        finally { if (icons[0] != IntPtr.Zero) DestroyIcon(icons[0]); }
+    }
+    private string SaveAsPng(Image image, string name, bool enlargeSmallImage)
     {
         using var canvas = new Bitmap(256, 256, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var graphics = Graphics.FromImage(canvas); graphics.Clear(Color.Transparent); graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-        var scale = Math.Min(1d, Math.Min(256d / image.Width, 256d / image.Height)); var w = (int)Math.Round(image.Width * scale); var h = (int)Math.Round(image.Height * scale);
+        var scale = Math.Min(256d / image.Width, 256d / image.Height); if (!enlargeSmallImage) scale = Math.Min(1d, scale); var w = Math.Max(1, (int)Math.Round(image.Width * scale)); var h = Math.Max(1, (int)Math.Round(image.Height * scale));
         graphics.DrawImage(image, (256 - w) / 2, (256 - h) / 2, w, h); var (path, stream) = NewFile(name);
         try
         {
@@ -209,6 +221,11 @@ public sealed class IconService
         }
         catch { stream.Dispose(); try { File.Delete(path); } catch { } throw; }
     }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint PrivateExtractIcons(string fileName, int iconIndex, int width, int height, IntPtr[] icons, uint[] iconIds, uint iconCount, uint flags);
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DestroyIcon(IntPtr icon);
     private (string Path, FileStream Stream) NewFile(string name)
     {
         var invalid = Path.GetInvalidFileNameChars(); var safe = new string(NameRules.Normalize(name).Select(c => invalid.Contains(c) ? '_' : c).ToArray()).TrimEnd(' ', '.');
