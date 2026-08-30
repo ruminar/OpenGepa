@@ -12,6 +12,7 @@ var tests = new (string Name, Action Run)[]
     ("Last-good recovery", TestLastGoodRecovery),
     ("Profile round trip and icon collision", TestProfileRoundTrip),
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
+    ("Destination choices", TestDestinationChoices),
     ("Editor expansion persistence", TestEditorExpansionPersistence),
     ("Tree range selection", TestTreeRangeSelection),
 };
@@ -108,6 +109,20 @@ static void TestDirectoryCandidateDefaults()
     True(DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\DiskSpd64.exe"));
     True(DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\Tool.lnk"));
     Equal("Tool.exe", DirectoryCandidateRules.DefaultDisplayName("C:\\Tools\\Tool.exe"));
+}
+
+static void TestDestinationChoices()
+{
+    var child = new GroupNode { Name = "Child", Order = 0 };
+    var parent = new GroupNode { Name = "Parent", Order = 1, Children = new ObservableCollection<LauncherNode> { child } };
+    var other = new GroupNode { Name = "Other", Order = 0 };
+    var tab = new LauncherTab { Name = "Main", Children = new ObservableCollection<LauncherNode> { parent, other } };
+    var choices = DestinationOptions.Build(tab);
+    Equal(4, choices.Count);
+    Equal("ルート", choices[0].DisplayPath); Equal(null, choices[0].GroupId);
+    Equal(other.Id, choices[1].GroupId); Equal("ルート / Other", choices[1].DisplayPath);
+    Equal(parent.Id, choices[2].GroupId); Equal("ルート / Parent", choices[2].DisplayPath);
+    Equal(child.Id, choices[3].GroupId); Equal("ルート / Parent / Child", choices[3].DisplayPath);
 }
 
 static void TestEditorExpansionPersistence()

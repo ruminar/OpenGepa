@@ -22,9 +22,9 @@
         </StackPanel>
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
             <Button Content="Group追加" Click="AddGroup_Click"/><Button Content="File追加" Margin="6,0,0,0" Click="AddFile_Click"/><Button Content="Directory追加" Margin="6,0,0,0" Click="AddDirectory_Click"/><Button Content="URL追加" Margin="6,0,0,0" Click="AddUrl_Click"/>
-            <Button Content="ディレクトリ走査" Margin="12,0,0,0" Click="Scan_Click"/><Button Content="編集" Margin="12,0,0,0" Click="Edit_Click"/><Button Content="削除" Margin="6,0,0,0" Click="Delete_Click"/>
+            <Button Content="ディレクトリ走査" Margin="12,0,0,0" Click="Scan_Click"/><Button Content="削除" Margin="12,0,0,0" Click="Delete_Click"/>
             <Button Content="アイコン変更" Margin="12,0,0,0" Click="ChangeIcon_Click"/><Button Content="再取得" Margin="6,0,0,0" Click="RetryIcon_Click"/><Button Content="標準に戻す" Margin="6,0,0,0" Click="ResetIcon_Click"/>
         </StackPanel>
-        <Border BorderBrush="#FFD0D5DD" BorderThickness="1" CornerRadius="6"><TreeView x:Name="EditorTree" Padding="8" AllowDrop="True" PreviewKeyDown="EditorTree_PreviewKeyDown" PreviewMouseLeftButtonDown="EditorTree_PreviewMouseLeftButtonDown" MouseMove="EditorTree_MouseMove" DragOver="EditorTree_DragOver" Drop="EditorTree_Drop"/></Border>
+        <Border BorderBrush="#FFD0D5DD" BorderThickness="1" CornerRadius="6"><TreeView x:Name="EditorTree" Padding="8" AllowDrop="True" PreviewKeyDown="EditorTree_PreviewKeyDown" PreviewMouseLeftButtonDown="EditorTree_PreviewMouseLeftButtonDown" PreviewMouseRightButtonDown="EditorTree_PreviewMouseRightButtonDown" MouseMove="EditorTree_MouseMove" DragOver="EditorTree_DragOver" Drop="EditorTree_Drop"/></Border>
     </DockPanel>
 </Window>

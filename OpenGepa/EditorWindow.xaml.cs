@@ -53,11 +53,13 @@ public partial class EditorWindow : Window
         AddNode(new DirectoryItem { Name = Path.GetFileName(folder.SelectedPath.TrimEnd(Path.DirectorySeparatorChar)), Target = folder.SelectedPath }, true);
     }
     private void AddUrl_Click(object sender, RoutedEventArgs e) => AddNode(new UrlItem(), true);
-    private void AddNode(LauncherNode node, bool target)
+    private void AddNode(LauncherNode node, bool target, bool chooseDestination = false, string? initialDestinationId = null)
     {
-        if (Tab is null) return; var d = new ItemDialog("項目を追加", node.Name, node is LauncherItem i ? i.Target : "", target) { Owner = this }; if (d.ShowDialog() != true) return;
+        if (Tab is null) return;
+        var currentDestinationId = chooseDestination ? initialDestinationId : GetPrimarySelectedNode() is GroupNode selectedGroup ? selectedGroup.Id : null;
+        var d = new ItemDialog("項目を追加", node.Name, node is LauncherItem i ? i.Target : "", target, chooseDestination ? DestinationOptions.Build(Tab) : null, currentDestinationId) { Owner = this }; if (d.ShowDialog() != true) return;
         node.Name = d.ItemName; if (node is LauncherItem item) item.Target = d.Target;
-        var tabId = Tab.Id; var parentId = GetPrimarySelectedNode() is GroupNode selectedGroup ? selectedGroup.Id : null;
+        var tabId = Tab.Id; var parentId = chooseDestination ? d.DestinationId : currentDestinationId;
         Commit(data => { var tab = data.Tabs.First(t => t.Id == tabId); var collection = parentId is null ? tab.Children : FindGroup(tab.Children, parentId)!.Children; node.Order = collection.Count; collection.Add(node); }, tabId);
         if (node is FileItem file) TryAddIcon(file.Id, file.Target, file.Name, tabId);
     }
@@ -66,10 +68,17 @@ public partial class EditorWindow : Window
         var icon = _app.IconService.TryExtract(target, name); if (icon is null) return;
         Commit(data => FindNode(data.Tabs.First(t => t.Id == tabId).Children, id)!.Icon = icon, tabId);
     }
-    private void Edit_Click(object sender, RoutedEventArgs e)
+    private void RenameSelectedNode()
     {
-        if (Tab is null || GetSingleSelectedNode() is not LauncherNode selected) return; var d = new ItemDialog("項目を編集", selected.Name, selected is LauncherItem i ? i.Target : "", selected is LauncherItem) { Owner = this }; if (d.ShowDialog() != true) return;
-        var tabId = Tab.Id; Commit(data => { var node = FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id)!; node.Name = d.ItemName; if (node is LauncherItem item) item.Target = d.Target; }, tabId);
+        if (Tab is null || GetSingleSelectedNode() is not LauncherNode selected) return;
+        var d = new TextPromptDialog("名前を変更", "表示名", selected.Name) { Owner = this }; if (d.ShowDialog() != true) return;
+        var tabId = Tab.Id; Commit(data => FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id)!.Name = d.Value, tabId);
+    }
+    private void ChangeSelectedTarget()
+    {
+        if (Tab is null || GetSingleSelectedNode() is not LauncherItem selected) return;
+        var d = new TextPromptDialog("targetを変更", "target", selected.Target) { Owner = this }; if (d.ShowDialog() != true) return;
+        var tabId = Tab.Id; Commit(data => ((LauncherItem)FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id)!).Target = d.Value, tabId);
     }
     private void ChangeIcon_Click(object sender, RoutedEventArgs e)
     {
@@ -137,7 +146,8 @@ public partial class EditorWindow : Window
     private void Window_Drop(object sender, System.Windows.DragEventArgs e)
     {
         if (e.Handled || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return; var paths = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop)!;
-        foreach (var path in paths) { if (File.Exists(path)) AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(path), Target = path }, true); else if (Directory.Exists(path)) AddNode(new DirectoryItem { Name = Path.GetFileName(path), Target = path }, true); }
+        var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = container?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
+        foreach (var path in paths) { if (File.Exists(path)) AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(path), Target = path }, true, true, destinationId); else if (Directory.Exists(path)) AddNode(new DirectoryItem { Name = Path.GetFileName(path), Target = path }, true, true, destinationId); }
     }
     private void EditorTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -147,6 +157,23 @@ public partial class EditorWindow : Window
         var update = TreeSelectionLogic.Apply(SelectedIds, visible, _selectionAnchorId, node.Id, (modifiers & ModifierKeys.Shift) != 0, (modifiers & ModifierKeys.Control) != 0);
         SelectedIds.Clear(); SelectedIds.UnionWith(update.Selected); _selectionAnchorId = update.AnchorId; _primarySelectedId = update.PrimaryId;
         ApplySelectionVisuals(); container.Focus(); e.Handled = true;
+    }
+    private void EditorTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
+        if (container?.DataContext is not LauncherNode node) return;
+        if (!SelectedIds.Contains(node.Id)) SelectOnly(node.Id, container); else { _primarySelectedId = node.Id; ApplySelectionVisuals(); container.Focus(); }
+        var single = GetSelectedNodes().Count == 1;
+        var menu = new ContextMenu();
+        menu.Items.Add(ContextMenuItem("名前を変更", RenameSelectedNode, single));
+        if (node is LauncherItem) menu.Items.Add(ContextMenuItem("targetを変更", ChangeSelectedTarget, single));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(ContextMenuItem("削除", DeleteSelected, true));
+        container.ContextMenu = menu; menu.IsOpen = true; e.Handled = true;
+    }
+    private static System.Windows.Controls.MenuItem ContextMenuItem(string header, Action action, bool enabled)
+    {
+        var item = new System.Windows.Controls.MenuItem { Header = header, IsEnabled = enabled }; item.Click += (_, _) => action(); return item;
     }
     private void EditorTree_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {

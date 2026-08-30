@@ -23,18 +23,47 @@ public sealed class TextPromptDialog : Window
 
 public sealed class ItemDialog : Window
 {
-    private readonly System.Windows.Controls.TextBox _name = new(); private readonly System.Windows.Controls.TextBox _target = new();
-    public string ItemName => _name.Text; public string Target => _target.Text;
-    public ItemDialog(string title, string name, string target, bool targetRequired)
+    private readonly System.Windows.Controls.TextBox _name = new(); private readonly System.Windows.Controls.TextBox _target = new(); private readonly System.Windows.Controls.ComboBox? _destination;
+    public string ItemName => _name.Text; public string Target => _target.Text; public string? DestinationId => (_destination?.SelectedItem as DestinationOption)?.GroupId;
+    public ItemDialog(string title, string name, string target, bool targetRequired, IReadOnlyList<DestinationOption>? destinations = null, string? selectedDestinationId = null)
     {
-        Title = title; Width = 560; Height = targetRequired ? 230 : 170; ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Title = title; Width = 560; Height = (targetRequired ? 230 : 170) + (destinations is null ? 0 : 65); ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         _name.Text = name; _target.Text = target;
         var panel = new StackPanel { Margin = new Thickness(16) };
         panel.Children.Add(new TextBlock { Text = "表示名" }); _name.Margin = new Thickness(0, 5, 0, 10); panel.Children.Add(_name);
         if (targetRequired) { panel.Children.Add(new TextBlock { Text = "対象" }); _target.Margin = new Thickness(0, 5, 0, 12); panel.Children.Add(_target); }
+        if (destinations is not null)
+        {
+            panel.Children.Add(new TextBlock { Text = "登録先" });
+            _destination = new System.Windows.Controls.ComboBox { ItemsSource = destinations, DisplayMemberPath = nameof(DestinationOption.DisplayPath), Margin = new Thickness(0, 5, 0, 12) };
+            _destination.SelectedItem = destinations.FirstOrDefault(x => string.Equals(x.GroupId, selectedDestinationId, StringComparison.OrdinalIgnoreCase)) ?? destinations.FirstOrDefault();
+            panel.Children.Add(_destination);
+        }
         var ok = new Button { Content = "OK", Width = 90, IsDefault = true }; ok.Click += (_, _) => DialogResult = true;
         var cancel = new Button { Content = "キャンセル", Width = 90, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right }; buttons.Children.Add(ok); buttons.Children.Add(cancel); panel.Children.Add(buttons); Content = panel;
+    }
+}
+
+public sealed record DestinationOption(string? GroupId, string DisplayPath);
+
+public static class DestinationOptions
+{
+    public static IReadOnlyList<DestinationOption> Build(LauncherTab tab)
+    {
+        var result = new List<DestinationOption> { new(null, "ルート") };
+        AddGroups(tab.Children, "ルート", result);
+        return result;
+    }
+
+    private static void AddGroups(IEnumerable<LauncherNode> nodes, string parentPath, List<DestinationOption> result)
+    {
+        foreach (var group in nodes.OfType<GroupNode>().OrderBy(x => x.Order))
+        {
+            var path = $"{parentPath} / {group.Name}";
+            result.Add(new DestinationOption(group.Id, path));
+            AddGroups(group.Children, path, result);
+        }
     }
 }
 
