@@ -38,10 +38,11 @@
                  SelectionChanged="TabsList_SelectionChanged" PreviewMouseRightButtonDown="TabsList_PreviewMouseRightButtonDown">
             <ListBox.ItemTemplate><DataTemplate>
                 <Border Margin="0,0,0,6" CornerRadius="7" Background="{DynamicResource TabBackgroundBrush}">
-                    <StackPanel Margin="5,6">
-                        <Grid Width="76" Height="76" HorizontalAlignment="Left"><TextBlock Text="▣" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TabForegroundBrush}"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}" Stretch="Uniform"/></Grid>
-                        <TextBlock Text="{Binding Name}" Margin="0,5,0,0" TextAlignment="Left" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TabForegroundBrush}"/>
-                    </StackPanel>
+                    <Grid Width="76" Height="76" HorizontalAlignment="Left" SnapsToDevicePixels="True" UseLayoutRounding="True">
+                        <TextBlock Text="▣" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TabForegroundBrush}"/>
+                        <Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}" Stretch="Uniform" RenderOptions.BitmapScalingMode="Fant" SnapsToDevicePixels="True"/>
+                        <Border VerticalAlignment="Bottom" Background="#B3FFFFFF" Padding="2,3"><TextBlock Text="{Binding Name}" TextAlignment="Left" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TabForegroundBrush}"/></Border>
+                    </Grid>
                 </Border>
             </DataTemplate></ListBox.ItemTemplate>
         </ListBox>
