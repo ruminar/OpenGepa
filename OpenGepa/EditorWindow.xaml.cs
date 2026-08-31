@@ -14,35 +14,35 @@ public sealed class EditorRootNode(ObservableCollection<LauncherNode> children)
     public ObservableCollection<LauncherNode> Children { get; } = children;
 }
 
+public sealed record NodeDragInfo(string SourceTabId, IReadOnlyList<string> NodeIds);
+
 public partial class EditorWindow : Window
 {
-    private readonly AppService _app; private bool _refreshing;
+    private readonly AppService _app; private readonly string _tabId;
     private System.Windows.Point _dragStart;
     private readonly Dictionary<string, HashSet<string>> _expandedByTab = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HashSet<string>> _selectedByTab = new(StringComparer.OrdinalIgnoreCase);
     private string? _currentTabId;
     private string? _selectionAnchorId;
     private string? _primarySelectedId;
-    private string? _pendingTabId;
     private EditorRootNode? _editorRoot;
     private const string NodeDragFormat = "OpenGepa.LauncherNodeId";
-    public EditorWindow(AppService app) { InitializeComponent(); _app = app; EditorTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler((_, _) => Dispatcher.BeginInvoke(RestoreTreeState))); _app.DataChanged += (_, _) => Dispatcher.Invoke(() => { var tabId = _pendingTabId ?? (TabsCombo.SelectedItem as LauncherTab)?.Id; _pendingTabId = null; RefreshData(tabId); }); }
+    public EditorWindow(AppService app, string tabId) { InitializeComponent(); _app = app; _tabId = tabId; EditorTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler((_, _) => Dispatcher.BeginInvoke(RestoreTreeState))); _app.DataChanged += (_, _) => Dispatcher.Invoke(RefreshData); }
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { e.Cancel = true; Hide(); }
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
-    public void RefreshData(string? tabId = null)
+    public void RefreshData()
     {
         CaptureExpansionState();
-        _refreshing = true; TabsCombo.ItemsSource = _app.Data.Tabs.OrderBy(t => t.Order).ToList(); TabsCombo.SelectedItem = _app.Data.Tabs.FirstOrDefault(t => t.Id == tabId) ?? _app.Data.Tabs.FirstOrDefault(t => t.Id == _app.Data.SelectedTabId) ?? _app.Data.Tabs.FirstOrDefault();
-        _currentTabId = (TabsCombo.SelectedItem as LauncherTab)?.Id; SetTreeItems(); _refreshing = false; RestoreTreeState();
+        _currentTabId = _app.Data.Tabs.Any(t => t.Id == _tabId) ? _tabId : null; TabNameText.Text = Tab?.Name ?? "削除されたApp Launcher"; SetTreeItems(); RestoreTreeState();
     }
-    private LauncherTab? Tab => TabsCombo.SelectedItem as LauncherTab;
+    private LauncherTab? Tab => _app.Data.Tabs.FirstOrDefault(t => t.Id == _tabId);
     private HashSet<string> SelectedIds => _currentTabId is null ? [] : _selectedByTab.TryGetValue(_currentTabId, out var selected) ? selected : _selectedByTab[_currentTabId] = new(StringComparer.OrdinalIgnoreCase);
-    private void TabsCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (_refreshing) return; CaptureExpansionState(); _currentTabId = Tab?.Id; _selectionAnchorId = null; _primarySelectedId = null; SetTreeItems(); RestoreTreeState(); }
     private void SetTreeItems() { _editorRoot = Tab is null ? null : new EditorRootNode(Tab.Children); EditorTree.ItemsSource = _editorRoot is null ? Array.Empty<EditorRootNode>() : new[] { _editorRoot }; }
     private void NewTab_Click(object sender, RoutedEventArgs e)
     {
         var d = new TextPromptDialog("新しいランチャー", "名前") { Owner = this }; if (d.ShowDialog() != true) return;
-        Commit(data => data.Tabs.Add(new LauncherTab { Name = d.Value, Order = data.Tabs.Count }), null);
+        var newTab = new LauncherTab { Name = d.Value };
+        if (Commit(data => { newTab.Order = data.Tabs.Count; data.Tabs.Add(newTab); }, null)) _app.ShowEditor(newTab.Id);
     }
     private void RenameTab_Click(object sender, RoutedEventArgs e)
     {
@@ -210,7 +210,9 @@ public partial class EditorWindow : Window
         if (e.LeftButton != MouseButtonState.Pressed || GetPrimarySelectedNode() is not LauncherNode node) return;
         var current = e.GetPosition(EditorTree);
         if (Math.Abs(current.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(current.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-        System.Windows.DragDrop.DoDragDrop(EditorTree, new System.Windows.DataObject(NodeDragFormat, node.Id), System.Windows.DragDropEffects.Move);
+        var ids = GetSelectedNodes().Select(x => x.Id).ToList();
+        if (ids.Count == 0 || Tab is null) return;
+        System.Windows.DragDrop.DoDragDrop(EditorTree, new System.Windows.DataObject(NodeDragFormat, new NodeDragInfo(Tab.Id, ids)), System.Windows.DragDropEffects.Move);
     }
     private void EditorTree_DragOver(object sender, System.Windows.DragEventArgs e)
     {
@@ -225,7 +227,7 @@ public partial class EditorWindow : Window
             return;
         }
         e.Handled = true; if (Tab is null) return;
-        var sourceId = e.Data.GetData(NodeDragFormat) as string; if (sourceId is null) return;
+        var drag = e.Data.GetData(NodeDragFormat) as NodeDragInfo; if (drag is null) return;
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
         var targetNode = container?.DataContext as LauncherNode;
         var relativeY = container is null || container.ActualHeight <= 0 ? .5 : e.GetPosition(container).Y / container.ActualHeight;
@@ -233,13 +235,12 @@ public partial class EditorWindow : Window
         var parentId = enterGroup ? targetNode!.Id : FindParentId(Tab.Children, targetNode?.Id);
         var targetId = enterGroup ? null : targetNode?.Id; var after = relativeY > .5;
         var tabId = Tab.Id;
-        Commit(data => MoveNode(data.Tabs.First(t => t.Id == tabId).Children, sourceId, parentId, targetId, after), tabId);
+        Commit(data => MoveNodes(data, drag.SourceTabId, tabId, drag.NodeIds, parentId, targetId, after), tabId);
     }
     private bool Commit(Action<OpenGepaData> action, string? tabId)
     {
-        _pendingTabId = tabId;
         if (_app.TryCommit(action, out var error)) return true;
-        _pendingTabId = null; MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); return false;
+        MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); return false;
     }
     private static GroupNode? FindGroup(IEnumerable<LauncherNode> nodes, string id) => FindNode(nodes, id) as GroupNode;
     private static LauncherNode? FindNode(IEnumerable<LauncherNode> nodes, string id) { foreach (var n in nodes) { if (n.Id == id) return n; if (n is GroupNode g) { var f = FindNode(g.Children, id); if (f is not null) return f; } } return null; }
@@ -255,18 +256,34 @@ public partial class EditorWindow : Window
     }
     private static string? FindParentId(IEnumerable<LauncherNode> nodes, string? id)
     { if (id is null) return null; foreach (var group in nodes.OfType<GroupNode>()) { if (group.Children.Any(x => x.Id == id)) return group.Id; var found = FindParentId(group.Children, id); if (found is not null) return found; } return null; }
-    private static void MoveNode(ObservableCollection<LauncherNode> root, string sourceId, string? parentId, string? targetId, bool after)
+    public static void MoveNodes(OpenGepaData data, string sourceTabId, string targetTabId, IReadOnlyList<string> sourceIds, string? parentId, string? targetId, bool after)
     {
-        var source = FindNode(root, sourceId) ?? throw new InvalidDataException("移動元が見つかりません。");
-        if (sourceId == parentId || source is GroupNode sourceGroup && parentId is not null && FindNode(sourceGroup.Children, parentId) is not null)
+        var sourceTab = data.Tabs.FirstOrDefault(t => t.Id == sourceTabId) ?? throw new InvalidDataException("移動元のApp Launcherが見つかりません。");
+        var targetTab = data.Tabs.FirstOrDefault(t => t.Id == targetTabId) ?? throw new InvalidDataException("移動先のApp Launcherが見つかりません。");
+        var selected = sourceIds.Distinct(StringComparer.OrdinalIgnoreCase).Select(id => FindNode(sourceTab.Children, id) ?? throw new InvalidDataException("移動元が見つかりません。")).ToList();
+        var selectedIds = selected.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var sources = selected.Where(node => !HasSelectedAncestor(sourceTab.Children, node.Id, selectedIds)).OrderBy(node => NodeOrder(sourceTab.Children, node.Id)).ToList();
+        if (sources.Count == 0) return;
+        if (sourceTabId == targetTabId && sources.Any(source => source.Id == parentId || source is GroupNode group && parentId is not null && FindNode(group.Children, parentId) is not null))
             throw new InvalidDataException("自分自身または子孫のGroupへは移動できません。");
-        var oldCollection = FindContainingCollection(root, sourceId) ?? throw new InvalidDataException("移動元が見つかりません。");
-        var newCollection = parentId is null ? root : (FindNode(root, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("移動先Groupが見つかりません。");
-        oldCollection.Remove(source);
+        var newCollection = parentId is null ? targetTab.Children : (FindNode(targetTab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("移動先Groupが見つかりません。");
+        foreach (var source in sources)
+        {
+            var oldCollection = FindContainingCollection(sourceTab.Children, source.Id) ?? throw new InvalidDataException("移動元が見つかりません。");
+            oldCollection.Remove(source);
+        }
         var index = targetId is null ? newCollection.Count : newCollection.ToList().FindIndex(x => x.Id == targetId);
         if (index < 0) index = newCollection.Count; else if (after) index++;
-        if (index > newCollection.Count) index = newCollection.Count; newCollection.Insert(index, source);
-        NormalizeOrders(root);
+        if (index > newCollection.Count) index = newCollection.Count;
+        foreach (var source in sources) newCollection.Insert(index++, source);
+        NormalizeOrders(sourceTab.Children);
+        if (sourceTabId != targetTabId) NormalizeOrders(targetTab.Children);
+    }
+    private static int NodeOrder(IEnumerable<LauncherNode> nodes, string id)
+    {
+        var order = 0;
+        foreach (var node in Walk(nodes)) { if (node.Id == id) return order; order++; }
+        return int.MaxValue;
     }
     private static ObservableCollection<LauncherNode>? FindContainingCollection(ObservableCollection<LauncherNode> nodes, string id)
     { if (nodes.Any(x => x.Id == id)) return nodes; foreach (var group in nodes.OfType<GroupNode>()) { var found = FindContainingCollection(group.Children, id); if (found is not null) return found; } return null; }

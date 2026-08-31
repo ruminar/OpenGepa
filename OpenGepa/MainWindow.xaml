@@ -6,6 +6,9 @@
         WindowStyle="ToolWindow" ShowInTaskbar="False" Topmost="True"
         Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown" StateChanged="Window_StateChanged">
     <Window.Resources>
+        <Style TargetType="TreeViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
         <HierarchicalDataTemplate DataType="{x:Type models:GroupNode}" ItemsSource="{Binding Children}">
             <Border Background="{DynamicResource GroupBackgroundBrush}" Padding="3" CornerRadius="3"><StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▸" HorizontalAlignment="Center" Foreground="{DynamicResource GroupForegroundBrush}"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="{DynamicResource GroupForegroundBrush}"/></StackPanel></Border>
         </HierarchicalDataTemplate>
@@ -25,7 +28,7 @@
         <Border x:Name="FutureDashboardHeaderHost" Grid.ColumnSpan="2" Visibility="Collapsed"/>
         <Border Grid.Row="1" Margin="10" Background="{DynamicResource PanelBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
             <Grid>
-                <TreeView x:Name="LauncherTree" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource ItemForegroundBrush}" Padding="8"
+        <TreeView x:Name="LauncherTree" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource ItemForegroundBrush}" Padding="8"
                           MouseLeftButtonUp="LauncherTree_MouseLeftButtonUp" KeyDown="LauncherTree_KeyDown"/>
                 <TextBlock x:Name="EmptyText" Text="表示されているランチャーがありません。&#x0a;トレイの［設定］から表示してください。"
                            HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource MutedForegroundBrush}" Visibility="Collapsed"/>

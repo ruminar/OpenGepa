@@ -15,7 +15,7 @@
                     <StackPanel x:Name="CustomAppearancePanel" Grid.Row="5" Grid.ColumnSpan="2" Margin="0,10,0,0"><TextBlock Text="カスタムでは#RRGGBB形式で指定します。" Foreground="{DynamicResource MutedForegroundBrush}"/><Button Content="配色を保存" Width="100" HorizontalAlignment="Right" Margin="0,6,0,0" Click="ApplyAppearance_Click"/></StackPanel>
                 </Grid>
             </GroupBox>
-            <GroupBox Header="縦タブの表示と順序" Foreground="{DynamicResource ItemForegroundBrush}"><DockPanel Margin="8"><StackPanel DockPanel.Dock="Right"><Button Content="上へ" Width="70" Click="Up_Click"/><Button Content="下へ" Width="70" Margin="0,6,0,0" Click="Down_Click"/></StackPanel><ListBox x:Name="TabsList" Background="{DynamicResource PanelBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}"><ListBox.ItemTemplate><DataTemplate><CheckBox Content="{Binding Name}" IsChecked="{Binding IsVisible}" Click="Visibility_Click"/></DataTemplate></ListBox.ItemTemplate></ListBox></DockPanel></GroupBox>
+            <GroupBox Header="縦タブの表示と順序" Foreground="{DynamicResource ItemForegroundBrush}"><DockPanel Margin="8"><StackPanel DockPanel.Dock="Right"><Button x:Name="UpButton" Content="上へ" Width="70" Click="Up_Click"/><Button x:Name="DownButton" Content="下へ" Width="70" Margin="0,6,0,0" Click="Down_Click"/></StackPanel><ListBox x:Name="TabsList" Background="{DynamicResource PanelBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}" SelectionChanged="TabsList_SelectionChanged"><ListBox.ItemTemplate><DataTemplate><CheckBox Content="{Binding Name}" IsChecked="{Binding IsVisible}" Click="Visibility_Click"/></DataTemplate></ListBox.ItemTemplate></ListBox></DockPanel></GroupBox>
         </StackPanel>
     </DockPanel>
 </Window>

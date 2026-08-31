@@ -14,7 +14,7 @@ namespace OpenGepa.Services;
 public sealed class AppService
 {
     private MainWindow? _launcher;
-    private EditorWindow? _editor;
+    private readonly Dictionary<string, EditorWindow> _editors = new(StringComparer.OrdinalIgnoreCase);
     private SettingsWindow? _settings;
 
     private AppService(AppPaths paths, DataStore store)
@@ -88,8 +88,33 @@ public sealed class AppService
     public void HideLauncher() => _launcher?.Hide();
     public void ShowEditor(string? tabId = null)
     {
-        _editor ??= new EditorWindow(this);
-        _editor.RefreshData(tabId); _editor.Show(); _editor.Activate();
+        var id = tabId ?? SelectedTab?.Id;
+        if (id is null) return;
+        if (!_editors.TryGetValue(id, out var editor))
+        {
+            editor = new EditorWindow(this, id);
+            _editors.Add(id, editor);
+        }
+        editor.RefreshData(); editor.Show(); editor.Activate();
+    }
+
+    public bool TryDuplicateTab(string sourceId, out string newTabId, out string error)
+    {
+        var createdId = "";
+        var succeeded = TryCommit(data =>
+        {
+            var source = data.Tabs.FirstOrDefault(x => x.Id == sourceId) ?? throw new InvalidDataException("複製元のApp Launcherが見つかりません。");
+            var baseName = source.Name;
+            var index = 2;
+            var name = $"{baseName} ({index})";
+            var existing = data.Tabs.Select(x => NameRules.Normalize(x.Name)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            while (existing.Contains(NameRules.Normalize(name))) name = $"{baseName} ({++index})";
+            var clone = LauncherTabCopy.Create(source, name, data.Tabs.Count);
+            data.Tabs.Add(clone);
+            createdId = clone.Id;
+        }, out error);
+        newTabId = createdId;
+        return succeeded;
     }
     public void ShowSettings()
     {

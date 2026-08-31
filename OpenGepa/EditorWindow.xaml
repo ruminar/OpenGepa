@@ -10,6 +10,7 @@
         <DataTemplate DataType="{x:Type models:UrlItem}"><Border Style="{StaticResource ItemNodeBorder}"><TextBlock Text="{Binding Name}" Foreground="{DynamicResource ItemForegroundBrush}"/></Border></DataTemplate>
         <Style TargetType="TreeViewItem">
             <Setter Property="Padding" Value="2"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Style.Triggers>
                 <Trigger Property="local:TreeSelectionVisual.IsSelected" Value="True">
                     <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}"/>
@@ -20,7 +21,7 @@
     </Window.Resources>
     <DockPanel Margin="12" Background="{DynamicResource AppBackgroundBrush}">
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
-            <ComboBox x:Name="TabsCombo" Width="220" DisplayMemberPath="Name" SelectionChanged="TabsCombo_SelectionChanged"/>
+            <TextBlock x:Name="TabNameText" Width="220" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource ItemForegroundBrush}"/>
             <Button Content="新規ランチャー" Margin="8,0,0,0" Click="NewTab_Click"/><Button Content="名前変更" Margin="6,0,0,0" Click="RenameTab_Click"/>
         </StackPanel>
         <Border Background="{DynamicResource PanelBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6"><TreeView x:Name="EditorTree" Background="Transparent" Padding="8" AllowDrop="True" PreviewKeyDown="EditorTree_PreviewKeyDown" PreviewMouseLeftButtonDown="EditorTree_PreviewMouseLeftButtonDown" PreviewMouseRightButtonDown="EditorTree_PreviewMouseRightButtonDown" MouseMove="EditorTree_MouseMove" DragOver="EditorTree_DragOver" Drop="EditorTree_Drop"/></Border>

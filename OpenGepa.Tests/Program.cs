@@ -14,6 +14,8 @@ var tests = new (string Name, Action Run)[]
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
     ("File dialog filter", TestFileDialogFilter),
     ("Appearance settings", TestAppearanceSettings),
+    ("Launcher tab duplication", TestLauncherTabDuplication),
+    ("Cross-launcher move", TestCrossLauncherMove),
     ("Small icon size is preserved", TestSmallIconSizeIsPreserved),
     ("Directory scan root group", TestDirectoryScanRootGroup),
     ("Destination choices", TestDestinationChoices),
@@ -131,6 +133,36 @@ static void TestAppearanceSettings()
     Throws<InvalidDataException>(() => AppearanceRules.Validate(new AppearanceSettings { GroupBackgroundColor = "blue" }));
 }
 
+static void TestLauncherTabDuplication()
+{
+    var path = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
+    try
+    {
+        var app = AppService.Create(path); app.Initialize();
+        var group = new GroupNode { Name = "Tools", Icon = "icon/tools.png" };
+        var file = new FileItem { Name = "Tool.exe", Target = "C:\\Tools\\Tool.exe", Icon = "icon/tool.png" }; group.Children.Add(file);
+        var tab = new LauncherTab { Name = "Launcher", Icon = "icon/tab.png", Children = new ObservableCollection<LauncherNode> { group } };
+        app.ReplaceData(Data(tab));
+        True(app.TryDuplicateTab(tab.Id, out var newId, out var error), error);
+        var clone = app.Data.Tabs.Single(x => x.Id == newId); Equal("Launcher (2)", clone.Name); Equal(tab.Icon, clone.Icon);
+        var cloneGroup = (GroupNode)clone.Children[0]; var cloneFile = (FileItem)cloneGroup.Children[0]; Equal(group.Icon, cloneGroup.Icon); Equal(file.Icon, cloneFile.Icon); Equal(file.Target, cloneFile.Target);
+        True(clone.Id != tab.Id && cloneGroup.Id != group.Id && cloneFile.Id != file.Id);
+    }
+    finally { Directory.Delete(path, true); }
+}
+
+static void TestCrossLauncherMove()
+{
+    var sourceItem = new FileItem { Name = "Tool.exe", Target = "C:\\Tools\\Tool.exe", Order = 0 };
+    var source = new LauncherTab { Name = "Source", Order = 0, Children = new ObservableCollection<LauncherNode> { sourceItem } };
+    var destinationGroup = new GroupNode { Name = "Destination", Order = 0 };
+    var destination = new LauncherTab { Name = "Target", Order = 1, Children = new ObservableCollection<LauncherNode> { destinationGroup } };
+    var data = new OpenGepaData { SelectedTabId = source.Id, Tabs = new ObservableCollection<LauncherTab> { source, destination } };
+    EditorWindow.MoveNodes(data, source.Id, destination.Id, [sourceItem.Id], destinationGroup.Id, null, false);
+    Equal(0, source.Children.Count); Equal(1, destinationGroup.Children.Count); True(ReferenceEquals(sourceItem, destinationGroup.Children[0])); Equal(0, destinationGroup.Children[0].Order);
+    new DataValidator().Validate(data);
+}
+
 static void TestSmallIconSizeIsPreserved()
 {
     var path = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
@@ -181,7 +213,7 @@ static void TestEditorExpansionPersistence()
             var app = AppService.Create(path); app.Initialize();
             var group = new GroupNode { Name = "Open" }; group.Children.Add(new FileItem { Name = "Tool.exe", Target = "C:\\Tools\\Tool.exe" });
             var tab = new LauncherTab { Name = "Editor", Children = new ObservableCollection<LauncherNode> { group } }; app.ReplaceData(Data(tab));
-            var window = new EditorWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; window.Show(); window.RefreshData(tab.Id); window.UpdateLayout();
+            var window = new EditorWindow(app, tab.Id) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; window.Show(); window.RefreshData(); window.UpdateLayout();
             var tree = (System.Windows.Controls.TreeView)window.FindName("EditorTree"); tree.UpdateLayout();
             var root = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); True(root.DataContext is EditorRootNode); root.IsExpanded = true; tree.UpdateLayout();
             var before = (System.Windows.Controls.TreeViewItem)root.ItemContainerGenerator.ContainerFromItem(root.Items[0]); before.IsExpanded = true; tree.UpdateLayout();

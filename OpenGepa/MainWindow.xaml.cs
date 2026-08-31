@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Interop;
+using Microsoft.Win32;
 using OpenGepa.Models;
 using OpenGepa.Services;
 
@@ -51,13 +52,32 @@ public partial class MainWindow : Window
         var item = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource); if (item?.DataContext is not LauncherTab tab) return;
         TabsList.SelectedItem = tab; var menu = new System.Windows.Controls.ContextMenu();
         menu.Items.Add(Menu("このランチャーを編集", () => _app.ShowEditor(tab.Id)));
+        menu.Items.Add(Menu("このランチャーを複製", () => DuplicateTab(tab)));
         menu.Items.Add(new System.Windows.Controls.Separator()); menu.Items.Add(Menu("名前を変更", () => RenameTab(tab)));
+        menu.Items.Add(Menu("アイコンを変更", () => ChangeTabIcon(tab)));
+        menu.Items.Add(Menu("アイコンを標準に戻す", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).Icon = null)));
         menu.Items.Add(Menu("非表示にする", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).IsVisible = false)));
-        menu.Items.Add(Menu("削除", () => { if (MessageBox.Show($"「{tab.Name}」を削除しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes) Commit(d => d.Tabs.Remove(d.Tabs.First(x => x.Id == tab.Id))); }));
+        menu.Items.Add(Menu("削除", () => { if (MessageBox.Show($"App Launcher\n「{tab.Name}」を削除しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes) Commit(d => d.Tabs.Remove(d.Tabs.First(x => x.Id == tab.Id))); }));
         item.ContextMenu = menu; menu.IsOpen = true; e.Handled = true;
     }
     private System.Windows.Controls.MenuItem Menu(string title, Action action) { var m = new System.Windows.Controls.MenuItem { Header = title }; m.Click += (_, _) => action(); return m; }
     private void RenameTab(LauncherTab tab) { var dialog = new TextPromptDialog("名前変更", "名前", tab.Name) { Owner = this }; if (dialog.ShowDialog() == true) Commit(data => data.Tabs.First(x => x.Id == tab.Id).Name = dialog.Value); }
+    private void DuplicateTab(LauncherTab tab)
+    {
+        if (_app.TryDuplicateTab(tab.Id, out var newId, out var error)) _app.ShowEditor(newId);
+        else MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+    private void ChangeTabIcon(LauncherTab tab)
+    {
+        var dialog = new OpenFileDialog { Title = "アイコンに使う画像", Filter = "画像|*.png;*.jpg;*.jpeg;*.bmp;*.ico" };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var icon = _app.IconService.ImportImage(dialog.FileName, tab.Name);
+            Commit(data => data.Tabs.First(x => x.Id == tab.Id).Icon = icon);
+        }
+        catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); }
+    }
     private void Commit(Action<OpenGepaData> change) { if (!_app.TryCommit(change, out var error)) MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); }
     private static T? FindAncestor<T>(DependencyObject? value) where T : DependencyObject { while (value is not null && value is not T) value = VisualTreeHelper.GetParent(value); return value as T; }
     private static TreeViewItem? FindContainer(ItemsControl root, object value)

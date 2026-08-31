@@ -78,3 +78,32 @@ public abstract class LauncherItem : LauncherNode
 public sealed class FileItem : LauncherItem { public override string DisplayGlyph => "▤"; }
 public sealed class DirectoryItem : LauncherItem { public override string DisplayGlyph => "▰"; }
 public sealed class UrlItem : LauncherItem { public override string DisplayGlyph => "◎"; }
+
+public static class LauncherTabCopy
+{
+    public static LauncherTab Create(LauncherTab source, string name, int order) => new()
+    {
+        Name = name,
+        Order = order,
+        IsVisible = source.IsVisible,
+        Icon = source.Icon,
+        Children = new ObservableCollection<LauncherNode>(source.Children.Select(CopyNode))
+    };
+
+    private static LauncherNode CopyNode(LauncherNode source)
+    {
+        LauncherNode copy = source switch
+        {
+            GroupNode group => new GroupNode { Children = new ObservableCollection<LauncherNode>(group.Children.Select(CopyNode)) },
+            FileItem => new FileItem(),
+            DirectoryItem => new DirectoryItem(),
+            UrlItem => new UrlItem(),
+            _ => throw new InvalidDataException("未対応のランチャー項目です。")
+        };
+        copy.Name = source.Name;
+        copy.Order = source.Order;
+        copy.Icon = source.Icon;
+        if (copy is LauncherItem item && source is LauncherItem sourceItem) item.Target = sourceItem.Target;
+        return copy;
+    }
+}
