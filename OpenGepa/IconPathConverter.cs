@@ -14,7 +14,8 @@ public sealed class IconPathConverter : IValueConverter
             var basePath = Path.GetFullPath(AppContext.BaseDirectory);
             var fullPath = Path.GetFullPath(Path.Combine(basePath, relative));
             if (!fullPath.StartsWith(Path.Combine(basePath, "icon") + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath)) return null;
-            var image = new BitmapImage(); image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad; image.UriSource = new Uri(fullPath); image.DecodePixelWidth = 32; image.EndInit(); image.Freeze(); return image;
+            var decodeWidth = parameter is not null && int.TryParse(parameter.ToString(), out var requested) ? requested : 32;
+            var image = new BitmapImage(); image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad; image.UriSource = new Uri(fullPath); image.DecodePixelWidth = Math.Clamp(decodeWidth, 1, 256); image.EndInit(); image.Freeze(); return image;
         }
         catch { return null; }
     }
