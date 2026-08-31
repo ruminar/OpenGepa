@@ -38,12 +38,6 @@ public partial class EditorWindow : Window
     private LauncherTab? Tab => _app.Data.Tabs.FirstOrDefault(t => t.Id == _tabId);
     private HashSet<string> SelectedIds => _currentTabId is null ? [] : _selectedByTab.TryGetValue(_currentTabId, out var selected) ? selected : _selectedByTab[_currentTabId] = new(StringComparer.OrdinalIgnoreCase);
     private void SetTreeItems() { _editorRoot = Tab is null ? null : new EditorRootNode(Tab.Children); EditorTree.ItemsSource = _editorRoot is null ? Array.Empty<EditorRootNode>() : new[] { _editorRoot }; }
-    private void NewTab_Click(object sender, RoutedEventArgs e)
-    {
-        var d = new TextPromptDialog("新しいランチャー", "名前") { Owner = this }; if (d.ShowDialog() != true) return;
-        var newTab = new LauncherTab { Name = d.Value };
-        if (Commit(data => { newTab.Order = data.Tabs.Count; data.Tabs.Add(newTab); }, null)) _app.ShowEditor(newTab.Id);
-    }
     private void RenameTab_Click(object sender, RoutedEventArgs e)
     {
         if (Tab is null) return; var id = Tab.Id; var d = new TextPromptDialog("名前変更", "名前", Tab.Name) { Owner = this }; if (d.ShowDialog() == true) Commit(data => data.Tabs.First(t => t.Id == id).Name = d.Value, id);
@@ -195,11 +189,11 @@ public partial class EditorWindow : Window
     }
     private void AddCreationItems(ContextMenu menu)
     {
-        menu.Items.Add(ContextMenuItem("Group追加", () => AddGroup_Click(this, new RoutedEventArgs()), true));
-        menu.Items.Add(ContextMenuItem("File追加", () => AddFile_Click(this, new RoutedEventArgs()), true));
-        menu.Items.Add(ContextMenuItem("Directory追加", () => AddDirectory_Click(this, new RoutedEventArgs()), true));
-        menu.Items.Add(ContextMenuItem("URL追加", () => AddUrl_Click(this, new RoutedEventArgs()), true));
-        menu.Items.Add(ContextMenuItem("ディレクトリ走査", () => Scan_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("グループを追加", () => AddGroup_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("ファイルを追加", () => AddFile_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("Directory参照追加（UNC可）", () => AddDirectory_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("URLを追加", () => AddUrl_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("フォルダを走査して一括登録", () => Scan_Click(this, new RoutedEventArgs()), true));
     }
     private static System.Windows.Controls.MenuItem ContextMenuItem(string header, Action action, bool enabled)
     {

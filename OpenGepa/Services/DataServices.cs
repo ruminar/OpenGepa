@@ -44,6 +44,8 @@ public sealed class DataValidator
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion)
             throw new InvalidDataException($"未対応のformatVersionです: {data.FormatVersion}");
         AppearanceRules.Validate(data.Appearance);
+        if (data.Tabs.Count == 0) throw new InvalidDataException("App Launcherをすべて削除することはできません。");
+        if (!data.Tabs.Any(x => x.IsVisible)) throw new InvalidDataException("表示中のApp Launcherを最低1つ残してください。");
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ValidateNames(data.Tabs.Select(x => x.Name), "LauncherTab");
         ValidateOrders(data.Tabs.Select(x => x.Order), "LauncherTab");

@@ -22,6 +22,7 @@ public sealed class OpenGepaData : ObservableModel
     public const int CurrentFormatVersion = 1;
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public string? SelectedTabId { get; set; }
+    public bool IsLauncherPinned { get; set; }
     public AppearanceSettings Appearance { get; set; } = new();
     public ObservableCollection<LauncherTab> Tabs { get; set; } = [];
 }

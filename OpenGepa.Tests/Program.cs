@@ -7,6 +7,7 @@ var tests = new (string Name, Action Run)[]
 {
     ("Name normalization", TestNameNormalization),
     ("Sibling duplicate rejection", TestDuplicateNames),
+    ("Launcher availability safety", TestLauncherAvailabilitySafety),
     ("Polymorphic round trip", TestRoundTrip),
     ("Backup recovery", TestBackupRecovery),
     ("Last-good recovery", TestLastGoodRecovery),
@@ -46,6 +47,16 @@ static void TestDuplicateNames()
     tab.Children.Add(new GroupNode { Name = " Chrome " });
     tab.Children.Add(new FileItem { Name = "chrome", Target = "C:\\Apps\\Chrome.exe" });
     Throws<InvalidDataException>(() => new DataValidator().Validate(Data(tab)));
+}
+
+static void TestLauncherAvailabilitySafety()
+{
+    Throws<InvalidDataException>(() => new DataValidator().Validate(new OpenGepaData()));
+    var hidden = new LauncherTab { Name = "Hidden", IsVisible = false };
+    Throws<InvalidDataException>(() => new DataValidator().Validate(new OpenGepaData { Tabs = new ObservableCollection<LauncherTab> { hidden } }));
+    var data = Data(new LauncherTab { Name = "Pinned" }); data.IsLauncherPinned = true;
+    var restored = new DataStore(new AppPaths(Path.GetTempPath()), new DataValidator()).Deserialize(new DataStore(new AppPaths(Path.GetTempPath()), new DataValidator()).Serialize(data));
+    True(restored.IsLauncherPinned);
 }
 
 static void TestRoundTrip()

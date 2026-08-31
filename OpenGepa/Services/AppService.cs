@@ -140,7 +140,6 @@ public sealed class TrayService : IDisposable
         _app = app; _icon.Text = "OpenGepa"; _icon.Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenGepa.exe")) ?? SystemIcons.Application;
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("設定", null, (_, _) => System.Windows.Application.Current.Dispatcher.Invoke(_app.ShowSettings));
-        menu.Items.Add("編集", null, (_, _) => System.Windows.Application.Current.Dispatcher.Invoke(() => _app.ShowEditor()));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("終了", null, (_, _) => System.Windows.Application.Current.Dispatcher.Invoke(() => ((App)System.Windows.Application.Current).ExitApplication()));
         _icon.ContextMenuStrip = menu;
