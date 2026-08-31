@@ -26,12 +26,12 @@ public sealed class ItemDialog : Window
 {
     private readonly System.Windows.Controls.TextBox _name = new(); private readonly System.Windows.Controls.TextBox _target = new(); private readonly System.Windows.Controls.ComboBox? _destination;
     public string ItemName => _name.Text; public string Target => _target.Text; public string? DestinationId => (_destination?.SelectedItem as DestinationOption)?.GroupId;
-    public ItemDialog(string title, string name, string target, bool targetRequired, IReadOnlyList<DestinationOption>? destinations = null, string? selectedDestinationId = null)
+    public ItemDialog(string title, string name, string target, bool targetRequired, IReadOnlyList<DestinationOption>? destinations = null, string? selectedDestinationId = null, bool showName = true)
     {
-        Title = title; Width = 560; Height = (targetRequired ? 230 : 170) + (destinations is null ? 0 : 65); ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Title = title; Width = 560; Height = (targetRequired ? 230 : 170) + (destinations is null ? 0 : 65) - (showName ? 0 : 55); ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         _name.Text = name; _target.Text = target;
         var panel = new StackPanel { Margin = new Thickness(16) };
-        panel.Children.Add(new TextBlock { Text = "表示名" }); _name.Margin = new Thickness(0, 5, 0, 10); panel.Children.Add(_name);
+        if (showName) { panel.Children.Add(new TextBlock { Text = "表示名" }); _name.Margin = new Thickness(0, 5, 0, 10); panel.Children.Add(_name); }
         if (targetRequired) { panel.Children.Add(new TextBlock { Text = "対象" }); _target.Margin = new Thickness(0, 5, 0, 12); panel.Children.Add(_target); }
         if (destinations is not null)
         {
@@ -118,7 +118,7 @@ public static class DirectoryScanRootRules
     {
         var name = GetRootGroupName(root);
         var normalized = NameRules.Normalize(name);
-        var existing = destination.FirstOrDefault(x => string.Equals(NameRules.Normalize(x.Name), normalized, StringComparison.OrdinalIgnoreCase));
+        var existing = destination.FirstOrDefault(x => string.Equals(NameRules.Normalize(DataValidator.NodeLabel(x)), normalized, StringComparison.OrdinalIgnoreCase));
         if (existing is GroupNode group) return group.Children;
         if (existing is not null) throw new InvalidDataException($"登録先には「{name}」というGroup以外の項目が存在します。");
         var created = new GroupNode { Name = name, Order = destination.Count };

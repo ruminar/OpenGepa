@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.IO;
 using System.IO.Compression;
+using System.Net.Http;
 using System.Text.Json;
 using System.Windows;
 using Microsoft.Win32;
@@ -21,6 +22,7 @@ public sealed class AppService
     {
         Paths = paths; Store = store;
         IconService = new IconService(paths);
+        SiteIconService = new SiteIconService(IconService);
         LaunchService = new LaunchService(this);
         StartupService = new StartupService();
         ProfileService = new ProfileService(this);
@@ -29,6 +31,7 @@ public sealed class AppService
     public AppPaths Paths { get; }
     public DataStore Store { get; }
     public IconService IconService { get; }
+    public SiteIconService SiteIconService { get; }
     public LaunchService LaunchService { get; }
     public StartupService StartupService { get; }
     public ProfileService ProfileService { get; }
@@ -137,7 +140,7 @@ public sealed class TrayService : IDisposable
     private readonly System.Windows.Forms.NotifyIcon _icon = new();
     public TrayService(AppService app)
     {
-        _app = app; _icon.Text = "OpenGepa"; _icon.Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenGepa.exe")) ?? SystemIcons.Application;
+        _app = app; _icon.Text = "OpenGepa"; RefreshIcon(); _app.DataChanged += (_, _) => RefreshIcon();
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("設定", null, (_, _) => System.Windows.Application.Current.Dispatcher.Invoke(_app.ShowSettings));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
@@ -146,6 +149,11 @@ public sealed class TrayService : IDisposable
         _icon.MouseClick += (_, e) => { if (e.Button == System.Windows.Forms.MouseButtons.Left) System.Windows.Application.Current.Dispatcher.Invoke(_app.ShowLauncher); };
     }
     public void Show() => _icon.Visible = true;
+    private void RefreshIcon()
+    {
+        var custom = _app.Data?.DefaultIcons?.TrayIcon;
+        _icon.Icon = _app.IconService.TryLoadIcon(custom) ?? Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenGepa.exe")) ?? SystemIcons.Application;
+    }
     public void Dispose() { _icon.Visible = false; _icon.Dispose(); }
 }
 
@@ -153,11 +161,11 @@ public sealed class LaunchService
 {
     private readonly AppService _app;
     public LaunchService(AppService app) => _app = app;
-    public async Task<(bool Success, string Error)> LaunchAsync(LauncherItem item)
+    public async Task<(bool Success, string Error)> LaunchAsync(LauncherNode item)
     {
         try
         {
-            var target = item.Target;
+            var target = item switch { NamedLauncherItem named => named.Target, DirectoryItem directory => directory.Target, _ => throw new InvalidDataException("起動できない項目です。") };
             var repaired = false;
             if (item is FileItem file)
             {
@@ -171,8 +179,7 @@ public sealed class LaunchService
             else if (item is UrlItem && (!Uri.TryCreate(target, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
                 throw new InvalidDataException("HTTPまたはHTTPSのURLではありません。");
 
-            await Task.Run(() => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true })
-                ?? throw new InvalidOperationException("起動要求を開始できませんでした。"));
+            await Task.Run(() => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }));
             if (repaired && item is FileItem repairedFile)
             {
                 var newTarget = target;
@@ -184,11 +191,17 @@ public sealed class LaunchService
         catch (Exception ex) { return (false, ex.Message); }
     }
 
-    private static LauncherItem? FindItem(OpenGepaData data, string id)
+    public bool OpenProperties(IntPtr owner, string target) => SHObjectProperties(owner, 0x2, target, null);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SHObjectProperties(IntPtr hwnd, uint shopObjectType, string objectName, string? propertyName);
+
+    private static NamedLauncherItem? FindItem(OpenGepaData data, string id)
     {
         foreach (var tab in data.Tabs) { var found = Find(tab.Children, id); if (found is not null) return found; } return null;
-        static LauncherItem? Find(IEnumerable<LauncherNode> nodes, string id)
-        { foreach (var n in nodes) { if (n is LauncherItem i && i.Id == id) return i; if (n is GroupNode g) { var f = Find(g.Children, id); if (f is not null) return f; } } return null; }
+        static NamedLauncherItem? Find(IEnumerable<LauncherNode> nodes, string id)
+        { foreach (var n in nodes) { if (n is NamedLauncherItem i && i.Id == id) return i; if (n is GroupNode g) { var f = Find(g.Children, id); if (f is not null) return f; } } return null; }
     }
 
     private static string? FindMovedFile(string path)
@@ -228,6 +241,22 @@ public sealed class IconService
     {
         using var image = Image.FromFile(source); return SaveAsPng(image, name);
     }
+    public string ImportImage(Stream source, string name)
+    {
+        using var image = Image.FromStream(source); return SaveAsPng(image, name);
+    }
+    public Icon? TryLoadIcon(string? relative)
+    {
+        if (string.IsNullOrWhiteSpace(relative)) return null;
+        try
+        {
+            var path = Path.GetFullPath(Path.Combine(_paths.BaseDirectory, relative));
+            if (!path.StartsWith(_paths.IconDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) return null;
+            using var image = Image.FromFile(path); using var bitmap = new Bitmap(image, new System.Drawing.Size(32, 32)); var handle = bitmap.GetHicon();
+            try { using var borrowed = Icon.FromHandle(handle); return (Icon)borrowed.Clone(); } finally { DestroyIcon(handle); }
+        }
+        catch { return null; }
+    }
     private Icon? TryExtractLargeIcon(string target)
     {
         var icons = new[] { IntPtr.Zero }; var ids = new uint[1];
@@ -264,5 +293,32 @@ public sealed class IconService
         if (safe.Length == 0) safe = "Icon"; if (safe.Length > 80) safe = safe[..80];
         var stem = $"{safe}_{DateTime.Now:yyyyMMdd_HHmmssfff}";
         for (var i = 1; ; i++) { var p = Path.Combine(_paths.IconDirectory, stem + (i == 1 ? "" : $"_{i}") + ".png"); try { return (p, new FileStream(p, FileMode.CreateNew, FileAccess.Write, FileShare.None)); } catch (IOException) { } }
+    }
+}
+
+public sealed class SiteIconService
+{
+    private readonly IconService _icons;
+    private static readonly HttpClient Client = new(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(5) };
+    public SiteIconService(IconService icons) => _icons = icons;
+    public async Task<string?> TryFetchAsync(string url, string name)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return null;
+        try
+        {
+            var iconUri = new Uri(uri.GetLeftPart(UriPartial.Authority) + "/favicon.ico");
+            using var response = await Client.GetAsync(iconUri, HttpCompletionOption.ResponseHeadersRead);
+            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > 1_048_576) return null;
+            await using var stream = await response.Content.ReadAsStreamAsync();
+            await using var limited = new MemoryStream(); var buffer = new byte[81920]; var total = 0;
+            while (true)
+            {
+                var read = await stream.ReadAsync(buffer); if (read == 0) break;
+                total += read; if (total > 1_048_576) return null;
+                await limited.WriteAsync(buffer.AsMemory(0, read));
+            }
+            limited.Position = 0; return _icons.ImportImage(limited, name);
+        }
+        catch { return null; }
     }
 }

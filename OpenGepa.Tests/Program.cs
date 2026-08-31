@@ -9,6 +9,7 @@ var tests = new (string Name, Action Run)[]
     ("Sibling duplicate rejection", TestDuplicateNames),
     ("Launcher availability safety", TestLauncherAvailabilitySafety),
     ("Polymorphic round trip", TestRoundTrip),
+    ("DirectoryItem has no name field", TestDirectoryItemHasNoNameField),
     ("Backup recovery", TestBackupRecovery),
     ("Last-good recovery", TestLastGoodRecovery),
     ("Profile round trip and icon collision", TestProfileRoundTrip),
@@ -68,6 +69,18 @@ static void TestRoundTrip()
         var restored = store.Deserialize(store.Serialize(Data(new LauncherTab { Name = "Main", Children = new ObservableCollection<LauncherNode> { group } })));
         True(restored.Tabs[0].Children[0] is GroupNode { Children.Count: 1 });
         True(((GroupNode)restored.Tabs[0].Children[0]).Children[0] is UrlItem);
+    });
+}
+
+static void TestDirectoryItemHasNoNameField()
+{
+    WithStore((_, store) =>
+    {
+        var data = Data(new LauncherTab { Name = "Main", Children = new ObservableCollection<LauncherNode> { new DirectoryItem { Target = "C:\\Tools" } } });
+        var json = store.Serialize(data);
+        True(!json.Contains("\"name\": \"C:\\\\Tools\"", StringComparison.Ordinal));
+        var restored = store.Deserialize(json);
+        Equal("C:\\Tools", ((DirectoryItem)restored.Tabs[0].Children[0]).Target);
     });
 }
 
@@ -230,7 +243,7 @@ static void TestEditorExpansionPersistence()
             var tree = (System.Windows.Controls.TreeView)window.FindName("EditorTree"); tree.UpdateLayout();
             var root = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); True(root.DataContext is EditorRootNode); root.IsExpanded = true; tree.UpdateLayout();
             var before = (System.Windows.Controls.TreeViewItem)root.ItemContainerGenerator.ContainerFromItem(root.Items[0]); before.IsExpanded = true; tree.UpdateLayout();
-            True(app.TryCommit(data => ((GroupNode)data.Tabs[0].Children[0]).Children[0].Name = "Renamed.exe", out var error), error);
+            True(app.TryCommit(data => ((FileItem)((GroupNode)data.Tabs[0].Children[0]).Children[0]).Name = "Renamed.exe", out var error), error);
             tree.UpdateLayout(); var refreshedRoot = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); var after = (System.Windows.Controls.TreeViewItem)refreshedRoot.ItemContainerGenerator.ContainerFromItem(refreshedRoot.Items[0]); True(refreshedRoot.IsExpanded); True(after.IsExpanded);
             window.Hide(); application.Shutdown();
         }

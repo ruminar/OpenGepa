@@ -44,6 +44,7 @@ public sealed class DataValidator
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion)
             throw new InvalidDataException($"未対応のformatVersionです: {data.FormatVersion}");
         AppearanceRules.Validate(data.Appearance);
+        ValidateDefaultIcons(data.DefaultIcons);
         if (data.Tabs.Count == 0) throw new InvalidDataException("App Launcherをすべて削除することはできません。");
         if (!data.Tabs.Any(x => x.IsVisible)) throw new InvalidDataException("表示中のApp Launcherを最低1つ残してください。");
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -61,12 +62,11 @@ public sealed class DataValidator
 
     private static void ValidateNodes(IEnumerable<LauncherNode> source, HashSet<string> ids, HashSet<string> ancestors)
     {
-        var nodes = source.ToList(); ValidateNames(nodes.Select(x => x.Name), "同一Group"); ValidateOrders(nodes.Select(x => x.Order), "同一Group");
+        var nodes = source.ToList(); ValidateNames(nodes.Select(NodeLabel), "同一Group"); ValidateOrders(nodes.Select(x => x.Order), "同一Group");
         foreach (var node in nodes)
         {
-            ValidateId(node.Id, ids); node.Name = Required(node.Name);
-            if (node is LauncherItem item) ValidateTarget(item);
-            ValidateIcon(node.Icon, node.Name);
+            ValidateId(node.Id, ids); ValidateNode(node);
+            ValidateIcon(node.Icon, NodeLabel(node));
             if (node is GroupNode group)
             {
                 if (!ancestors.Add(group.Id)) throw new InvalidDataException($"Group {group.Name} に循環があります。");
@@ -82,14 +82,30 @@ public sealed class DataValidator
     }
     private static void ValidateOrders(IEnumerable<int> orders, string scope)
     { var values = orders.ToList(); if (values.Any(x => x < 0) || values.Distinct().Count() != values.Count) throw new InvalidDataException($"{scope}の表示順が不正です。"); }
-    private static void ValidateTarget(LauncherItem item)
+    private static void ValidateNode(LauncherNode node)
     {
-        if (string.IsNullOrWhiteSpace(item.Target)) throw new InvalidDataException($"{item.Name}のtargetが空です。");
-        if (item is UrlItem)
+        switch (node)
         {
-            if (!Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) throw new InvalidDataException($"{item.Name}のURLはHTTPまたはHTTPSで指定してください。");
+            case GroupNode group: group.Name = Required(group.Name); break;
+            case NamedLauncherItem item:
+                item.Name = Required(item.Name);
+                if (string.IsNullOrWhiteSpace(item.Target)) throw new InvalidDataException($"{item.Name}のtargetが空です。");
+                if (item is UrlItem)
+                {
+                    if (!Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) throw new InvalidDataException($"{item.Name}のURLはHTTPまたはHTTPSで指定してください。");
+                }
+                else if (!Path.IsPathFullyQualified(item.Target)) throw new InvalidDataException($"{item.Name}のtargetは絶対パスで指定してください。");
+                break;
+            case DirectoryItem directory:
+                if (string.IsNullOrWhiteSpace(directory.Target) || !Path.IsPathFullyQualified(directory.Target)) throw new InvalidDataException("Directory参照のtargetは絶対パスで指定してください。");
+                break;
+            default: throw new InvalidDataException("未対応のランチャー項目です。");
         }
-        else if (!Path.IsPathFullyQualified(item.Target)) throw new InvalidDataException($"{item.Name}のtargetは絶対パスで指定してください。");
+    }
+    public static string NodeLabel(LauncherNode node) => node switch { DirectoryItem directory => directory.Target, GroupNode group => group.Name, NamedLauncherItem item => item.Name, _ => "項目" };
+    private static void ValidateDefaultIcons(DefaultIconSettings icons)
+    {
+        ValidateIcon(icons.GroupIcon, "Group既定"); ValidateIcon(icons.DirectoryIcon, "Directory既定"); ValidateIcon(icons.UrlIcon, "URL既定"); ValidateIcon(icons.TrayIcon, "トレイ既定");
     }
     private static void ValidateIcon(string? icon, string name)
     {

@@ -22,7 +22,7 @@ public partial class MainWindow : Window
 
     public void RefreshData()
     {
-        _refreshing = true; var visible = _app.VisibleTabs; TabsList.ItemsSource = visible; TabsList.SelectedItem = _app.SelectedTab; PinToggle.IsChecked = _app.Data.IsLauncherPinned; ApplySearch(false); EmptyText.Visibility = visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed; _refreshing = false;
+        _refreshing = true; var visible = _app.VisibleTabs; TabsList.ItemsSource = visible; TabsList.SelectedItem = _app.SelectedTab; PinToggle.IsChecked = _app.Data.IsLauncherPinned; Topmost = !_app.Data.IsLauncherPinned; Title = _app.SelectedTab is null ? "OpenGepa" : $"OpenGepa - {_app.SelectedTab.Name}"; ApplySearch(false); EmptyText.Visibility = visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed; _refreshing = false;
     }
     public void PositionNearCursor()
     {
@@ -31,13 +31,13 @@ public partial class MainWindow : Window
     }
     private void Window_Deactivated(object sender, EventArgs e) { if (IsVisible && !_app.Data.IsLauncherPinned && !_dialogOpen) Hide(); }
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e) { if (e.Key == Key.Escape && !string.IsNullOrEmpty(SearchText.Text)) { SearchText.Clear(); e.Handled = true; } else if (e.Key == Key.Escape) { Hide(); e.Handled = true; } }
-    private void PinToggle_Changed(object sender, RoutedEventArgs e) { if (!_refreshing) Commit(data => data.IsLauncherPinned = PinToggle.IsChecked == true); }
+    private void PinToggle_Changed(object sender, RoutedEventArgs e) { if (!_refreshing) { Topmost = PinToggle.IsChecked != true; Commit(data => data.IsLauncherPinned = PinToggle.IsChecked == true); } }
     private void SearchText_Changed(object sender, TextChangedEventArgs e) => ApplySearch(true);
 
     private void ApplySearch(bool captureState)
     {
         var tab = _app.SelectedTab; if (tab is null) { LauncherTree.ItemsSource = null; return; } var search = NameRules.Normalize(SearchText.Text);
-        if (search.Length == 0) { LauncherTree.ItemsSource = tab.Children; if (_expandedBeforeFilter is not null) { Dispatcher.BeginInvoke(() => RestoreExpanded(_expandedBeforeFilter)); _expandedBeforeFilter = null; } return; }
+        if (search.Length == 0) { LauncherTree.ItemsSource = tab.Children; var expanded = _expandedBeforeFilter; _expandedBeforeFilter = null; if (expanded is not null) Dispatcher.BeginInvoke(() => RestoreExpanded(expanded)); return; }
         if (captureState && _expandedBeforeFilter is null) _expandedBeforeFilter = ExpandedIds(); LauncherTree.ItemsSource = Filter(tab.Children, search); Dispatcher.BeginInvoke(ExpandAll);
     }
     private static ObservableCollection<LauncherNode> Filter(IEnumerable<LauncherNode> nodes, string text)
@@ -50,7 +50,7 @@ public partial class MainWindow : Window
                 if (Contains(group.Name, text)) result.Add(CloneGroup(group, new ObservableCollection<LauncherNode>(group.Children)));
                 else { var children = Filter(group.Children, text); if (children.Count > 0) result.Add(CloneGroup(group, children)); }
             }
-            else if (Contains(node.Name, text)) result.Add(node);
+            else if (Contains(DataValidator.NodeLabel(node), text)) result.Add(node);
         }
         return result;
     }
@@ -61,16 +61,16 @@ public partial class MainWindow : Window
     private async void LauncherTree_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         var item = FindAncestor<TreeViewItem>((DependencyObject)e.OriginalSource); if (item?.DataContext is GroupNode) { if (FindAncestor<System.Windows.Controls.Primitives.ToggleButton>((DependencyObject)e.OriginalSource) is null) item.IsExpanded = !item.IsExpanded; e.Handled = true; return; }
-        if (item?.DataContext is LauncherItem launcher) { e.Handled = true; await Launch(launcher); }
+        if (item?.DataContext is LauncherNode launcher && (launcher is FileItem or DirectoryItem or UrlItem)) { e.Handled = true; await Launch(launcher); }
     }
     private async void LauncherTree_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (LauncherTree.SelectedItem is GroupNode && (e.Key == Key.Enter || e.Key == Key.Space)) { var item = FindContainer(LauncherTree, LauncherTree.SelectedItem); if (item is not null) item.IsExpanded = !item.IsExpanded; e.Handled = true; }
-        else if (LauncherTree.SelectedItem is LauncherItem item && e.Key == Key.Enter) { e.Handled = true; await Launch(item); }
+        else if (LauncherTree.SelectedItem is LauncherNode item && item is FileItem or DirectoryItem or UrlItem && e.Key == Key.Enter) { e.Handled = true; await Launch(item); }
     }
-    private async Task Launch(LauncherItem item)
+    private async Task Launch(LauncherNode item)
     {
-        if (_launching) return; _launching = true; try { var result = await _app.LaunchService.LaunchAsync(item); if (result.Success) { if (!_app.Data.IsLauncherPinned) Hide(); } else ShowDialog(() => MessageBox.Show($"「{item.Name}」を起動できませんでした。\n\n{result.Error}", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); } finally { _launching = false; }
+        if (_launching) return; _launching = true; try { var result = await _app.LaunchService.LaunchAsync(item); if (result.Success) { if (!_app.Data.IsLauncherPinned) Hide(); } else ShowDialog(() => MessageBox.Show($"「{DataValidator.NodeLabel(item)}」を起動できませんでした。\n\n{result.Error}", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); } finally { _launching = false; }
     }
 
     private void LauncherTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
@@ -82,11 +82,11 @@ public partial class MainWindow : Window
     private void AddNodeMenu(ContextMenu menu, LauncherNode node)
     {
         if (node is GroupNode) { AddCreationItems(menu, node.Id); menu.Items.Add(new Separator()); }
-        menu.Items.Add(Menu("名前を変更", () => RenameNode(node)));
+        if (node is not DirectoryItem) menu.Items.Add(Menu("名前を変更", () => RenameNode(node)));
         if (node is FileItem file) { menu.Items.Add(Menu("起動対象を変更", () => ChangeTarget(file))); menu.Items.Add(Menu("Windowsのプロパティを開く", () => OpenProperties(file))); }
-        else if (node is DirectoryItem directory) menu.Items.Add(Menu("参照先を変更", () => ChangeTarget(directory)));
+        else if (node is DirectoryItem directory) menu.Items.Add(Menu("参照先を変更", () => ChangeDirectoryTarget(directory)));
         else if (node is UrlItem url) menu.Items.Add(Menu("URLを変更", () => ChangeTarget(url)));
-        menu.Items.Add(new Separator()); menu.Items.Add(Menu("アイコンを変更", () => ChangeNodeIcon(node))); if (node is FileItem retry) menu.Items.Add(Menu("アイコンを再取得", () => RetryNodeIcon(retry))); menu.Items.Add(Menu("アイコンを標準に戻す", () => SetNodeIcon(node.Id, null))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("削除", () => DeleteNode(node)));
+        menu.Items.Add(new Separator()); menu.Items.Add(Menu("アイコンを変更", () => ChangeNodeIcon(node))); if (node is FileItem retry) menu.Items.Add(Menu("アイコンを再取得", () => RetryNodeIcon(retry))); if (node is UrlItem site) menu.Items.Add(Menu("サイトのアイコンを取得", () => _ = FetchUrlIcon(site))); menu.Items.Add(Menu("アイコンを標準に戻す", () => SetNodeIcon(node.Id, null))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("削除", () => DeleteNode(node)));
     }
     private void AddCreationItems(ContextMenu menu, string? parentId)
     {
@@ -102,28 +102,30 @@ public partial class MainWindow : Window
     private void AddDirectory(string? parentId)
     {
         using var folder = new System.Windows.Forms.FolderBrowserDialog { Description = "参照するDirectory（UNC可）" }; _dialogOpen = true; System.Windows.Forms.DialogResult result; try { result = folder.ShowDialog(); } finally { _dialogOpen = false; } if (result != System.Windows.Forms.DialogResult.OK) return;
-        var d = new ItemDialog("Directory参照追加（UNC可）", Path.GetFileName(folder.SelectedPath.TrimEnd(Path.DirectorySeparatorChar)), folder.SelectedPath, true) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) AddNode(new DirectoryItem { Name = d.ItemName, Target = d.Target }, parentId);
+        var d = new ItemDialog("Directory参照追加（UNC可）", "", folder.SelectedPath, true, showName: false) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) AddNode(new DirectoryItem { Target = d.Target }, parentId);
     }
-    private void AddUrl(string? parentId) { var d = new ItemDialog("URLを追加", "", "", true) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) AddNode(new UrlItem { Name = d.ItemName, Target = d.Target }, parentId); }
+    private void AddUrl(string? parentId) { var d = new ItemDialog("URLを追加", "", "", true) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) { var url = new UrlItem { Name = d.ItemName, Target = d.Target }; AddNode(url, parentId); _ = FetchUrlIcon(url); } }
     private void AddNode(LauncherNode node, string? parentId)
     {
         var tabId = _app.SelectedTab?.Id; if (tabId is null) return; Commit(data => { var tab = data.Tabs.First(t => t.Id == tabId); var target = parentId is null ? tab.Children : (FindNode(tab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("登録先Groupが見つかりません。"); node.Order = target.Count; target.Add(node); });
     }
-    private void RenameNode(LauncherNode node) { var d = new TextPromptDialog("名前を変更", "表示名", node.Name) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => FindNode(data.Tabs.First(t => t.Id == SelectedTabId).Children, node.Id)!.Name = d.Value); }
-    private void ChangeTarget(LauncherItem node) { var d = new TextPromptDialog(node is UrlItem ? "URLを変更" : "起動対象を変更", "対象", node.Target) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => ((LauncherItem)FindNode(data.Tabs.First(t => t.Id == SelectedTabId).Children, node.Id)!).Target = d.Value); }
+    private void RenameNode(LauncherNode node) { var d = new TextPromptDialog("名前を変更", "表示名", DataValidator.NodeLabel(node)) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => { var found = FindNode(data.Tabs.First(t => t.Id == SelectedTabId).Children, node.Id); if (found is GroupNode group) group.Name = d.Value; else if (found is NamedLauncherItem item) item.Name = d.Value; }); }
+    private void ChangeTarget(NamedLauncherItem node) { var d = new TextPromptDialog(node is UrlItem ? "URLを変更" : "起動対象を変更", "対象", node.Target) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => ((NamedLauncherItem)FindNode(data.Tabs.First(t => t.Id == SelectedTabId).Children, node.Id)!).Target = d.Value); }
+    private void ChangeDirectoryTarget(DirectoryItem node) { var d = new TextPromptDialog("参照先を変更", "対象", node.Target) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => ((DirectoryItem)FindNode(data.Tabs.First(t => t.Id == SelectedTabId).Children, node.Id)!).Target = d.Value); }
     private void ChangeNodeIcon(LauncherNode node)
     {
         var dialog = new OpenFileDialog { Title = "アイコンに使う画像", Filter = "画像|*.png;*.jpg;*.jpeg;*.bmp;*.ico" }; if (ShowDialog(dialog.ShowDialog) != true) return;
-        try { SetNodeIcon(node.Id, _app.IconService.ImportImage(dialog.FileName, node.Name)); } catch (Exception ex) { ShowDialog(() => MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
+        try { SetNodeIcon(node.Id, _app.IconService.ImportImage(dialog.FileName, DataValidator.NodeLabel(node))); } catch (Exception ex) { ShowDialog(() => MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
     }
     private void RetryNodeIcon(FileItem node) { var icon = _app.IconService.TryExtract(node.Target, node.Name); if (icon is null) { ShowDialog(() => MessageBox.Show("対象ファイルからアイコンを取得できませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning)); return; } SetNodeIcon(node.Id, icon); }
+    private async Task FetchUrlIcon(UrlItem node) { var icon = await _app.SiteIconService.TryFetchAsync(node.Target, node.Name); if (icon is not null) SetNodeIcon(node.Id, icon); }
     private void SetNodeIcon(string id, string? icon) => Commit(data => FindNode(data.Tabs.First(t => t.Id == SelectedTabId).Children, id)!.Icon = icon);
-    private void OpenProperties(FileItem node) { try { Process.Start(new ProcessStartInfo(node.Target) { UseShellExecute = true, Verb = "properties" }); } catch (Exception ex) { ShowDialog(() => MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); } }
-    private void DeleteNode(LauncherNode node) { if (ShowDialog(() => MessageBox.Show($"「{node.Name}」を削除しますか？\nこの操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning)) == MessageBoxResult.Yes) Commit(data => { var tab = data.Tabs.First(t => t.Id == SelectedTabId); RemoveNode(tab.Children, node.Id); NormalizeOrders(tab.Children); }); }
+    private void OpenProperties(FileItem node) { if (!_app.LaunchService.OpenProperties(new WindowInteropHelper(this).Handle, node.Target)) ShowDialog(() => MessageBox.Show("Windowsのプロパティを開けませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
+    private void DeleteNode(LauncherNode node) { if (ShowDialog(() => MessageBox.Show($"「{DataValidator.NodeLabel(node)}」を削除しますか？\nこの操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning)) == MessageBoxResult.Yes) Commit(data => { var tab = data.Tabs.First(t => t.Id == SelectedTabId); RemoveNode(tab.Children, node.Id); NormalizeOrders(tab.Children); }); }
 
     private void TabsList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var item = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource); if (item?.DataContext is not LauncherTab tab) return; TabsList.SelectedItem = tab; var menu = new ContextMenu();
+        var item = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource); if (item?.DataContext is not LauncherTab tab) return; var menu = new ContextMenu();
         menu.Items.Add(Menu("設定", _app.ShowSettings)); menu.Items.Add(Menu("ランチャーの新規登録", NewTab)); menu.Items.Add(new Separator()); menu.Items.Add(Menu("このランチャーを編集", () => _app.ShowEditor(tab.Id))); menu.Items.Add(Menu("このランチャーを複製", () => DuplicateTab(tab))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("名前を変更", () => RenameTab(tab))); menu.Items.Add(Menu("アイコンを変更", () => ChangeTabIcon(tab))); menu.Items.Add(Menu("アイコンを標準に戻す", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).Icon = null))); menu.Items.Add(Menu("非表示にする", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).IsVisible = false))); menu.Items.Add(Menu("削除", () => DeleteTab(tab))); item.ContextMenu = menu; menu.IsOpen = true; e.Handled = true;
     }
     private void NewTab() { var d = new TextPromptDialog("ランチャーの新規登録", "名前") { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => data.Tabs.Add(new LauncherTab { Name = d.Value, Order = data.Tabs.Count })); }

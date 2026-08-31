@@ -51,15 +51,16 @@ public partial class EditorWindow : Window
     private void AddDirectory_Click(object sender, RoutedEventArgs e)
     {
         using var folder = new System.Windows.Forms.FolderBrowserDialog { Description = "登録するディレクトリ" }; if (folder.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-        AddNode(new DirectoryItem { Name = Path.GetFileName(folder.SelectedPath.TrimEnd(Path.DirectorySeparatorChar)), Target = folder.SelectedPath }, true, true);
+        AddNode(new DirectoryItem { Target = folder.SelectedPath }, true, true);
     }
     private void AddUrl_Click(object sender, RoutedEventArgs e) => AddNode(new UrlItem(), true, true);
     private void AddNode(LauncherNode node, bool target, bool chooseDestination = false, string? initialDestinationId = null, bool initialDestinationSpecified = false)
     {
         if (Tab is null) return;
         var currentDestinationId = chooseDestination ? initialDestinationSpecified ? initialDestinationId : DefaultDestinationId() : GetPrimarySelectedNode() is GroupNode selectedGroup ? selectedGroup.Id : null;
-        var d = new ItemDialog("項目を追加", node.Name, node is LauncherItem i ? i.Target : "", target, chooseDestination ? DestinationOptions.Build(Tab) : null, currentDestinationId) { Owner = this }; if (d.ShowDialog() != true) return;
-        node.Name = d.ItemName; if (node is LauncherItem item) item.Target = d.Target;
+        var directory = node is DirectoryItem;
+        var d = new ItemDialog("項目を追加", DataValidator.NodeLabel(node), node switch { NamedLauncherItem i => i.Target, DirectoryItem i => i.Target, _ => "" }, target, chooseDestination ? DestinationOptions.Build(Tab) : null, currentDestinationId, !directory) { Owner = this }; if (d.ShowDialog() != true) return;
+        if (node is GroupNode group) group.Name = d.ItemName; else if (node is NamedLauncherItem item) { item.Name = d.ItemName; item.Target = d.Target; } else if (node is DirectoryItem directoryItem) directoryItem.Target = d.Target;
         var tabId = Tab.Id; var parentId = chooseDestination ? d.DestinationId : currentDestinationId;
         Commit(data => { var tab = data.Tabs.First(t => t.Id == tabId); var collection = parentId is null ? tab.Children : FindGroup(tab.Children, parentId)!.Children; node.Order = collection.Count; collection.Add(node); }, tabId);
         if (node is FileItem file) TryAddIcon(file.Id, file.Target, file.Name, tabId);
@@ -72,15 +73,17 @@ public partial class EditorWindow : Window
     private void RenameSelectedNode()
     {
         if (Tab is null || GetSingleSelectedNode() is not LauncherNode selected) return;
-        var d = new TextPromptDialog("名前を変更", "表示名", selected.Name) { Owner = this }; if (d.ShowDialog() != true) return;
-        var tabId = Tab.Id; Commit(data => FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id)!.Name = d.Value, tabId);
+        if (selected is DirectoryItem) return;
+        var d = new TextPromptDialog("名前を変更", "表示名", DataValidator.NodeLabel(selected)) { Owner = this }; if (d.ShowDialog() != true) return;
+        var tabId = Tab.Id; Commit(data => { var found = FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id); if (found is GroupNode group) group.Name = d.Value; else if (found is NamedLauncherItem item) item.Name = d.Value; }, tabId);
     }
     private void ChangeSelectedTarget()
     {
-        if (Tab is null || GetSingleSelectedNode() is not LauncherItem selected) return;
+        if (Tab is null || GetSingleSelectedNode() is not LauncherNode selected || selected is GroupNode) return;
         var title = selected switch { FileItem => "起動対象を変更", DirectoryItem => "開く場所を変更", UrlItem => "URLを変更", _ => "対象を変更" };
-        var d = new TextPromptDialog(title, "対象", selected.Target) { Owner = this }; if (d.ShowDialog() != true) return;
-        var tabId = Tab.Id; Commit(data => ((LauncherItem)FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id)!).Target = d.Value, tabId);
+        var target = selected switch { NamedLauncherItem item => item.Target, DirectoryItem item => item.Target, _ => "" };
+        var d = new TextPromptDialog(title, "対象", target) { Owner = this }; if (d.ShowDialog() != true) return;
+        var tabId = Tab.Id; Commit(data => { var found = FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id); if (found is NamedLauncherItem item) item.Target = d.Value; else if (found is DirectoryItem directory) directory.Target = d.Value; }, tabId);
     }
     private void ChangeIcon_Click(object sender, RoutedEventArgs e)
     {
@@ -89,7 +92,7 @@ public partial class EditorWindow : Window
         if (dialog.ShowDialog(this) != true) return;
         try
         {
-            var icon = _app.IconService.ImportImage(dialog.FileName, node.Name); var tabId = Tab.Id;
+            var icon = _app.IconService.ImportImage(dialog.FileName, DataValidator.NodeLabel(node)); var tabId = Tab.Id;
             Commit(data => FindNode(data.Tabs.First(t => t.Id == tabId).Children, node.Id)!.Icon = icon, tabId);
         }
         catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); }
@@ -114,7 +117,7 @@ public partial class EditorWindow : Window
         var selectedSet = nodes.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var roots = nodes.Where(node => !HasSelectedAncestor(Tab.Children, node.Id, selectedSet)).ToList();
         var descendants = roots.OfType<GroupNode>().Sum(group => Walk(group.Children).Count());
-        var detail = nodes.Count == 1 ? $"「{nodes[0].Name}」" : $"選択した{nodes.Count}件";
+        var detail = nodes.Count == 1 ? $"「{DataValidator.NodeLabel(nodes[0])}」" : $"選択した{nodes.Count}件";
         if (descendants > 0) detail += $"と、その中にある{descendants}件の項目";
         if (MessageBox.Show($"{detail}を削除しますか？\nこの操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var tabId = Tab.Id; SelectedIds.Clear(); _selectionAnchorId = null; _primarySelectedId = null;
@@ -149,7 +152,7 @@ public partial class EditorWindow : Window
     {
         if (e.Handled || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return; var paths = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop)!;
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = container?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
-        foreach (var path in paths) { if (File.Exists(path)) AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(path), Target = path }, true, true, destinationId, true); else if (Directory.Exists(path)) AddNode(new DirectoryItem { Name = Path.GetFileName(path), Target = path }, true, true, destinationId, true); }
+        foreach (var path in paths) { if (File.Exists(path)) AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(path), Target = path }, true, true, destinationId, true); else if (Directory.Exists(path)) AddNode(new DirectoryItem { Target = path }, true, true, destinationId, true); }
     }
     private void EditorTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -175,7 +178,7 @@ public partial class EditorWindow : Window
         var single = GetSelectedNodes().Count == 1;
         var menu = new ContextMenu();
         if (node is GroupNode) { AddCreationItems(menu); menu.Items.Add(new Separator()); }
-        menu.Items.Add(ContextMenuItem("名前を変更", RenameSelectedNode, single));
+        if (node is not DirectoryItem) menu.Items.Add(ContextMenuItem("名前を変更", RenameSelectedNode, single));
         if (node is FileItem) menu.Items.Add(ContextMenuItem("起動対象を変更", ChangeSelectedTarget, single));
         else if (node is DirectoryItem) menu.Items.Add(ContextMenuItem("開く場所を変更", ChangeSelectedTarget, single));
         else if (node is UrlItem) menu.Items.Add(ContextMenuItem("URLを変更", ChangeSelectedTarget, single));
