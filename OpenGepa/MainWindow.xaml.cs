@@ -64,8 +64,8 @@ public partial class MainWindow : Window
     private void RenameTab(LauncherTab tab) { var dialog = new TextPromptDialog("名前変更", "名前", tab.Name) { Owner = this }; if (dialog.ShowDialog() == true) Commit(data => data.Tabs.First(x => x.Id == tab.Id).Name = dialog.Value); }
     private void DuplicateTab(LauncherTab tab)
     {
-        if (_app.TryDuplicateTab(tab.Id, out var newId, out var error)) _app.ShowEditor(newId);
-        else MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error);
+        if (_app.TryDuplicateTab(tab.Id, out _, out var error)) return;
+        MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error);
     }
     private void ChangeTabIcon(LauncherTab tab)
     {

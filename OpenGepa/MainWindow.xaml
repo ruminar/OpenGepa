@@ -37,8 +37,12 @@
         <ListBox x:Name="TabsList" Grid.Row="1" Grid.Column="1" Margin="0,10,10,10" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource TabForegroundBrush}"
                  SelectionChanged="TabsList_SelectionChanged" PreviewMouseRightButtonDown="TabsList_PreviewMouseRightButtonDown">
             <ListBox.ItemTemplate><DataTemplate>
-                <Border Padding="5,12" Margin="0,0,0,6" CornerRadius="7" Background="{DynamicResource TabBackgroundBrush}">
-                    <StackPanel><Grid Width="24" Height="24" HorizontalAlignment="Center"><TextBlock Text="▣" HorizontalAlignment="Center" Foreground="{DynamicResource TabForegroundBrush}"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" TextAlignment="Center" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TabForegroundBrush}"/></StackPanel>
+                <Border Height="96" Margin="0,0,0,6" CornerRadius="7" Background="{DynamicResource TabBackgroundBrush}" ClipToBounds="True">
+                    <Grid>
+                        <TextBlock Text="▣" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TabForegroundBrush}"/>
+                        <Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}" Stretch="UniformToFill"/>
+                        <Border VerticalAlignment="Bottom" Background="{DynamicResource PanelBackgroundBrush}" Opacity="0.88" Padding="3,4"><TextBlock Text="{Binding Name}" TextAlignment="Center" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TabForegroundBrush}"/></Border>
+                    </Grid>
                 </Border>
             </DataTemplate></ListBox.ItemTemplate>
         </ListBox>

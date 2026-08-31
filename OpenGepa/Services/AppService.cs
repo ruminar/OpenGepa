@@ -104,7 +104,7 @@ public sealed class AppService
         var succeeded = TryCommit(data =>
         {
             var source = data.Tabs.FirstOrDefault(x => x.Id == sourceId) ?? throw new InvalidDataException("複製元のApp Launcherが見つかりません。");
-            var baseName = source.Name;
+            var baseName = CopyBaseName(source.Name);
             var index = 2;
             var name = $"{baseName} ({index})";
             var existing = data.Tabs.Select(x => NameRules.Normalize(x.Name)).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -115,6 +115,14 @@ public sealed class AppService
         }, out error);
         newTabId = createdId;
         return succeeded;
+    }
+
+    private static string CopyBaseName(string name)
+    {
+        var normalized = NameRules.Normalize(name);
+        var start = normalized.LastIndexOf(" (", StringComparison.Ordinal);
+        if (start <= 0 || !normalized.EndsWith(')') || !int.TryParse(normalized[(start + 2)..^1], out var index) || index < 2) return normalized;
+        return normalized[..start];
     }
     public void ShowSettings()
     {

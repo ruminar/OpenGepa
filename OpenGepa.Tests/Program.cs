@@ -147,6 +147,8 @@ static void TestLauncherTabDuplication()
         var clone = app.Data.Tabs.Single(x => x.Id == newId); Equal("Launcher (2)", clone.Name); Equal(tab.Icon, clone.Icon);
         var cloneGroup = (GroupNode)clone.Children[0]; var cloneFile = (FileItem)cloneGroup.Children[0]; Equal(group.Icon, cloneGroup.Icon); Equal(file.Icon, cloneFile.Icon); Equal(file.Target, cloneFile.Target);
         True(clone.Id != tab.Id && cloneGroup.Id != group.Id && cloneFile.Id != file.Id);
+        True(app.TryDuplicateTab(clone.Id, out var thirdId, out error), error);
+        Equal("Launcher (3)", app.Data.Tabs.Single(x => x.Id == thirdId).Name);
     }
     finally { Directory.Delete(path, true); }
 }
