@@ -43,6 +43,7 @@ public sealed class DataValidator
     {
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion)
             throw new InvalidDataException($"未対応のformatVersionです: {data.FormatVersion}");
+        AppearanceRules.Validate(data.Appearance);
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ValidateNames(data.Tabs.Select(x => x.Name), "LauncherTab");
         ValidateOrders(data.Tabs.Select(x => x.Order), "LauncherTab");

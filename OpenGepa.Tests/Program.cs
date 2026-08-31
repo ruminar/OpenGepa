@@ -13,6 +13,7 @@ var tests = new (string Name, Action Run)[]
     ("Profile round trip and icon collision", TestProfileRoundTrip),
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
     ("File dialog filter", TestFileDialogFilter),
+    ("Appearance settings", TestAppearanceSettings),
     ("Small icon size is preserved", TestSmallIconSizeIsPreserved),
     ("Directory scan root group", TestDirectoryScanRootGroup),
     ("Destination choices", TestDestinationChoices),
@@ -88,7 +89,7 @@ static void TestProfileRoundTrip()
     {
         var app = AppService.Create(path); app.Initialize();
         var iconPath = Path.Combine(app.Paths.IconDirectory, "sample.png"); WritePng(iconPath, System.Drawing.Color.Red);
-        var tab = new LauncherTab { Name = "Profile" }; tab.Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tools\\Tool.exe", Icon = "icon/sample.png" }); app.ReplaceData(Data(tab));
+        var tab = new LauncherTab { Name = "Profile" }; tab.Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tools\\Tool.exe", Icon = "icon/sample.png" }); var data = Data(tab); data.Appearance = new AppearanceSettings { Theme = "custom", GroupBackgroundColor = "#112233", GroupForegroundColor = "#445566", LauncherItemBackgroundColor = "#778899", LauncherItemForegroundColor = "#AABBCC" }; app.ReplaceData(data);
         var profile = Path.Combine(path, "profile.ogp"); app.ProfileService.Save(profile);
         using (var archive = System.IO.Compression.ZipFile.OpenRead(profile))
         {
@@ -97,7 +98,7 @@ static void TestProfileRoundTrip()
         }
         WritePng(iconPath, System.Drawing.Color.Blue);
         var loaded = app.ProfileService.Load(profile); var item = (FileItem)loaded.Tabs[0].Children[0];
-        Equal("icon/sample_2.png", item.Icon); True(File.Exists(Path.Combine(path, "icon", "sample_2.png")));
+        Equal("icon/sample_2.png", item.Icon); True(File.Exists(Path.Combine(path, "icon", "sample_2.png"))); Equal("custom", loaded.Appearance.Theme); Equal("#112233", loaded.Appearance.GroupBackgroundColor);
     }
     finally { Directory.Delete(path, true); }
 }
@@ -120,6 +121,14 @@ static void TestFileDialogFilter()
     True(DirectoryCandidateRules.FileItemDialogFilter.Contains("*.lnk", StringComparison.Ordinal));
     True(DirectoryCandidateRules.FileItemDialogFilter.Contains("*.pdf", StringComparison.Ordinal));
     True(!DirectoryCandidateRules.FileItemDialogFilter.Contains("*.*", StringComparison.Ordinal));
+}
+
+static void TestAppearanceSettings()
+{
+    var custom = new AppearanceSettings { Theme = "CUSTOM", GroupBackgroundColor = "#112233", GroupForegroundColor = "#aabbcc", LauncherItemBackgroundColor = "#445566", LauncherItemForegroundColor = "#778899" };
+    AppearanceRules.Validate(custom); Equal("custom", custom.Theme); Equal("#AABBCC", custom.GroupForegroundColor);
+    var colors = ThemePalette.Resolve(custom); Equal("#112233", colors.GroupBackground); Equal("#778899", colors.ItemForeground);
+    Throws<InvalidDataException>(() => AppearanceRules.Validate(new AppearanceSettings { GroupBackgroundColor = "blue" }));
 }
 
 static void TestSmallIconSizeIsPreserved()

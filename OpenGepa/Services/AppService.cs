@@ -44,7 +44,7 @@ public sealed class AppService
     public void Initialize()
     {
         Paths.EnsureWritable();
-        var result = Store.Load(); Data = result.Data;
+        var result = Store.Load(); Data = result.Data; ThemePalette.Apply(Data.Appearance);
         if (result.Source is DataSource.Backup or DataSource.LastGood)
             MessageBox.Show($"{result.Source}から設定を復旧しました。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
@@ -56,7 +56,7 @@ public sealed class AppService
     {
         try
         {
-            var candidate = Store.Clone(Data); change(candidate); Store.Save(candidate); Data = candidate;
+            var candidate = Store.Clone(Data); change(candidate); Store.Save(candidate); Data = candidate; ThemePalette.Apply(Data.Appearance);
             DataChanged?.Invoke(this, EventArgs.Empty); error = ""; return true;
         }
         catch (Exception ex) { error = ex.Message; return false; }
@@ -64,7 +64,7 @@ public sealed class AppService
 
     public void ReplaceData(OpenGepaData data)
     {
-        Store.Save(data); Data = data; DataChanged?.Invoke(this, EventArgs.Empty);
+        Store.Save(data); Data = data; ThemePalette.Apply(Data.Appearance); DataChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SelectTab(string id)

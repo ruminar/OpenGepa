@@ -11,8 +11,26 @@ public partial class SettingsWindow : Window
     public SettingsWindow(AppService app) { InitializeComponent(); _app = app; }
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { e.Cancel = true; Hide(); }
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
-    public void RefreshData() { _refreshing = true; StartupCheck.IsChecked = _app.StartupService.IsEnabled; TabsList.ItemsSource = _app.Data.Tabs.OrderBy(t => t.Order).ToList(); _refreshing = false; }
+    public void RefreshData()
+    {
+        _refreshing = true; StartupCheck.IsChecked = _app.StartupService.IsEnabled; TabsList.ItemsSource = _app.Data.Tabs.OrderBy(t => t.Order).ToList();
+        var appearance = _app.Data.Appearance; ThemeCombo.SelectedValue = appearance.Theme; GroupBackgroundText.Text = appearance.GroupBackgroundColor; GroupForegroundText.Text = appearance.GroupForegroundColor; ItemBackgroundText.Text = appearance.LauncherItemBackgroundColor; ItemForegroundText.Text = appearance.LauncherItemForegroundColor; var custom = appearance.Theme == "custom"; GroupBackgroundText.IsEnabled = custom; GroupForegroundText.IsEnabled = custom; ItemBackgroundText.IsEnabled = custom; ItemForegroundText.IsEnabled = custom; CustomAppearancePanel.IsEnabled = custom;
+        _refreshing = false;
+    }
     private void StartupCheck_Changed(object sender, RoutedEventArgs e) { if (_refreshing) return; try { _app.StartupService.SetEnabled(StartupCheck.IsChecked == true); } catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); RefreshData(); } }
+    private void ThemeCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_refreshing || ThemeCombo.SelectedValue is not string theme) return;
+        Commit(data => data.Appearance.Theme = theme);
+    }
+    private void ApplyAppearance_Click(object sender, RoutedEventArgs e)
+    {
+        Commit(data =>
+        {
+            data.Appearance.GroupBackgroundColor = GroupBackgroundText.Text; data.Appearance.GroupForegroundColor = GroupForegroundText.Text;
+            data.Appearance.LauncherItemBackgroundColor = ItemBackgroundText.Text; data.Appearance.LauncherItemForegroundColor = ItemForegroundText.Text;
+        });
+    }
     private void Visibility_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not LauncherTab tab) return; var visible = ((System.Windows.Controls.CheckBox)sender).IsChecked == true;

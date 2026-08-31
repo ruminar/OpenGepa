@@ -22,7 +22,18 @@ public sealed class OpenGepaData : ObservableModel
     public const int CurrentFormatVersion = 1;
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public string? SelectedTabId { get; set; }
+    public AppearanceSettings Appearance { get; set; } = new();
     public ObservableCollection<LauncherTab> Tabs { get; set; } = [];
+}
+
+public sealed class AppearanceSettings : ObservableModel
+{
+    private string _theme = "light"; private string _groupBackgroundColor = "#F1F5F9"; private string _groupForegroundColor = "#101828"; private string _launcherItemBackgroundColor = "#FFFFFF"; private string _launcherItemForegroundColor = "#101828";
+    public string Theme { get => _theme; set => SetField(ref _theme, value); }
+    public string GroupBackgroundColor { get => _groupBackgroundColor; set => SetField(ref _groupBackgroundColor, value); }
+    public string GroupForegroundColor { get => _groupForegroundColor; set => SetField(ref _groupForegroundColor, value); }
+    public string LauncherItemBackgroundColor { get => _launcherItemBackgroundColor; set => SetField(ref _launcherItemBackgroundColor, value); }
+    public string LauncherItemForegroundColor { get => _launcherItemForegroundColor; set => SetField(ref _launcherItemForegroundColor, value); }
 }
 
 public sealed class LauncherTab : ObservableModel

@@ -6,5 +6,17 @@
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:IconPathConverter x:Key="IconPathConverter" />
+        <SolidColorBrush x:Key="AppBackgroundBrush" Color="#FFF7F8FA" />
+        <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#FFFFFFFF" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#FFD9DDE5" />
+        <SolidColorBrush x:Key="TabBackgroundBrush" Color="#FFE7ECF5" />
+        <SolidColorBrush x:Key="TabForegroundBrush" Color="#FF101828" />
+        <SolidColorBrush x:Key="GroupBackgroundBrush" Color="#FFF1F5F9" />
+        <SolidColorBrush x:Key="GroupForegroundBrush" Color="#FF101828" />
+        <SolidColorBrush x:Key="ItemBackgroundBrush" Color="#FFFFFFFF" />
+        <SolidColorBrush x:Key="ItemForegroundBrush" Color="#FF101828" />
+        <SolidColorBrush x:Key="SelectionBackgroundBrush" Color="#FFCCE5FF" />
+        <SolidColorBrush x:Key="SelectionForegroundBrush" Color="#FF101828" />
+        <SolidColorBrush x:Key="MutedForegroundBrush" Color="#FF667085" />
     </Application.Resources>
 </Application>

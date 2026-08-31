@@ -7,35 +7,35 @@
         Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown" StateChanged="Window_StateChanged">
     <Window.Resources>
         <HierarchicalDataTemplate DataType="{x:Type models:GroupNode}" ItemsSource="{Binding Children}">
-            <StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▸" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel>
+            <Border Background="{DynamicResource GroupBackgroundBrush}" Padding="3" CornerRadius="3"><StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▸" HorizontalAlignment="Center" Foreground="{DynamicResource GroupForegroundBrush}"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="{DynamicResource GroupForegroundBrush}"/></StackPanel></Border>
         </HierarchicalDataTemplate>
         <DataTemplate DataType="{x:Type models:FileItem}">
-            <StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▤" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel>
+            <Border Background="{DynamicResource ItemBackgroundBrush}" Padding="3" CornerRadius="3"><StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▤" HorizontalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/></StackPanel></Border>
         </DataTemplate>
         <DataTemplate DataType="{x:Type models:DirectoryItem}">
-            <StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▰" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel>
+            <Border Background="{DynamicResource ItemBackgroundBrush}" Padding="3" CornerRadius="3"><StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="▰" HorizontalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/></StackPanel></Border>
         </DataTemplate>
         <DataTemplate DataType="{x:Type models:UrlItem}">
-            <StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="◎" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel>
+            <Border Background="{DynamicResource ItemBackgroundBrush}" Padding="3" CornerRadius="3"><StackPanel Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="◎" HorizontalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/></StackPanel></Border>
         </DataTemplate>
     </Window.Resources>
-    <Grid Background="#FFF7F8FA">
+    <Grid Background="{DynamicResource AppBackgroundBrush}">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
         <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
         <Border x:Name="FutureDashboardHeaderHost" Grid.ColumnSpan="2" Visibility="Collapsed"/>
-        <Border Grid.Row="1" Margin="10" Background="White" BorderBrush="#FFD9DDE5" BorderThickness="1" CornerRadius="8">
+        <Border Grid.Row="1" Margin="10" Background="{DynamicResource PanelBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
             <Grid>
-                <TreeView x:Name="LauncherTree" BorderThickness="0" Background="Transparent" Padding="8"
+                <TreeView x:Name="LauncherTree" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource ItemForegroundBrush}" Padding="8"
                           MouseLeftButtonUp="LauncherTree_MouseLeftButtonUp" KeyDown="LauncherTree_KeyDown"/>
                 <TextBlock x:Name="EmptyText" Text="表示されているランチャーがありません。&#x0a;トレイの［設定］から表示してください。"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Foreground="#FF667085" Visibility="Collapsed"/>
+                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource MutedForegroundBrush}" Visibility="Collapsed"/>
             </Grid>
         </Border>
-        <ListBox x:Name="TabsList" Grid.Row="1" Grid.Column="1" Margin="0,10,10,10" BorderThickness="0" Background="Transparent"
+        <ListBox x:Name="TabsList" Grid.Row="1" Grid.Column="1" Margin="0,10,10,10" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource TabForegroundBrush}"
                  SelectionChanged="TabsList_SelectionChanged" PreviewMouseRightButtonDown="TabsList_PreviewMouseRightButtonDown">
             <ListBox.ItemTemplate><DataTemplate>
-                <Border Padding="5,12" Margin="0,0,0,6" CornerRadius="7" Background="#FFE7ECF5">
-                    <StackPanel><Grid Width="24" Height="24" HorizontalAlignment="Center"><TextBlock Text="▣" HorizontalAlignment="Center"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" TextAlignment="Center" TextWrapping="Wrap" FontSize="12"/></StackPanel>
+                <Border Padding="5,12" Margin="0,0,0,6" CornerRadius="7" Background="{DynamicResource TabBackgroundBrush}">
+                    <StackPanel><Grid Width="24" Height="24" HorizontalAlignment="Center"><TextBlock Text="▣" HorizontalAlignment="Center" Foreground="{DynamicResource TabForegroundBrush}"/><Image Source="{Binding Icon, Converter={StaticResource IconPathConverter}}"/></Grid><TextBlock Text="{Binding Name}" TextAlignment="Center" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TabForegroundBrush}"/></StackPanel>
                 </Border>
             </DataTemplate></ListBox.ItemTemplate>
         </ListBox>

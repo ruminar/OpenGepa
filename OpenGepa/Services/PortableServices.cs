@@ -49,7 +49,7 @@ public sealed class ProfileService
         using (var archive = ZipFile.Open(temp, ZipArchiveMode.Create))
         {
             WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 1, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.1.0" }, _app.Store.JsonOptions));
-            WriteEntry(archive, "settings.json", JsonSerializer.Serialize(new { selectedTabId = profileData.SelectedTabId, tabs = profileData.Tabs.Select(t => new { t.Id, t.IsVisible, t.Order }) }, _app.Store.JsonOptions));
+            WriteEntry(archive, "settings.json", JsonSerializer.Serialize(new { selectedTabId = profileData.SelectedTabId, appearance = profileData.Appearance, tabs = profileData.Tabs.Select(t => new { t.Id, t.IsVisible, t.Order }) }, _app.Store.JsonOptions));
             foreach (var tab in profileData.Tabs) WriteEntry(archive, $"menus/{tab.Id}.json", JsonSerializer.Serialize(tab, _app.Store.JsonOptions));
             foreach (var iconPath in EnumerateIcons(_app.Data).Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -84,7 +84,8 @@ public sealed class ProfileService
             var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(tempRoot, "manifest.json")));
             if (manifest.RootElement.GetProperty("format").GetString() != "OpenGepaProfile" || manifest.RootElement.GetProperty("formatVersion").GetInt32() != 1) throw new InvalidDataException("未対応のProfileです。");
             var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(tempRoot, "settings.json")));
-            var data = new OpenGepaData { SelectedTabId = settings.RootElement.GetProperty("selectedTabId").GetString() };
+            var appearance = settings.RootElement.TryGetProperty("appearance", out var appearanceElement) ? JsonSerializer.Deserialize<AppearanceSettings>(appearanceElement.GetRawText(), _app.Store.JsonOptions) ?? new AppearanceSettings() : new AppearanceSettings();
+            var data = new OpenGepaData { SelectedTabId = settings.RootElement.GetProperty("selectedTabId").GetString(), Appearance = appearance };
             foreach (var menu in Directory.EnumerateFiles(Path.Combine(tempRoot, "menus"), "*.json"))
             {
                 var tab = JsonSerializer.Deserialize<LauncherTab>(File.ReadAllText(menu), _app.Store.JsonOptions) ?? throw new InvalidDataException("LauncherTabを読み込めません。");

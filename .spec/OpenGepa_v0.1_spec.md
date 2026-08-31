@@ -1046,7 +1046,36 @@ v0.1では次の設定を提供する。
 
 現在選択中のタブを非表示にした場合は、次の表示可能タブ、前の表示可能タブ、先頭の表示可能タブの順で選択する。表示中タブが一つもない場合は空状態を表示する。
 
-### 14.3 Save／Load
+### 14.3 外観
+
+設定画面でテーマを`ライト`、`ダーク`、`カスタム`から選択できる。Windowsのシステムテーマへの自動追従はv0.1では行わない。
+
+- ライトとダークは、ウインドウ、パネル、枠線、縦タブ、選択色を含む組み込み配色とする
+- カスタムでは次の4色を`#RRGGBB`形式で設定できる
+  - Group背景色
+  - Group文字色
+  - 項目背景色
+  - 項目文字色
+- DirectoryItemとUrlItemは項目配色を使用する
+- GroupとLauncherItemの背景色は、ランチャー画面と編集TreeViewの両方へ反映する
+- 不正な色コードは保存せず、`#RRGGBB`形式であることを示すエラーを表示する
+- 設定確定後は直ちに保存し、表示中の画面へ反映する
+
+JSON例:
+
+```json
+{
+  "appearance": {
+    "theme": "custom",
+    "groupBackgroundColor": "#F1F5F9",
+    "groupForegroundColor": "#101828",
+    "launcherItemBackgroundColor": "#FFFFFF",
+    "launcherItemForegroundColor": "#101828"
+  }
+}
+```
+
+### 14.4 Save／Load
 
 設定ウインドウからOpenGepa ProfileのSaveとLoadを実行できる。
 
