@@ -1,7 +1,7 @@
 <Window x:Class="OpenGepa.SettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="OpenGepa - 設定" Width="600" Height="900" StateChanged="Window_StateChanged">
     <DockPanel Margin="16" Background="{DynamicResource AppBackgroundBrush}">
         <CheckBox x:Name="StartupCheck" DockPanel.Dock="Top" Content="Windows起動時にOpenGepaを起動する" Margin="0,0,0,16" Checked="StartupCheck_Changed" Unchecked="StartupCheck_Changed" Foreground="{DynamicResource ItemForegroundBrush}"/>
-        <StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel>
             <GroupBox Header="外観" Foreground="{DynamicResource ItemForegroundBrush}" Margin="0,0,0,12">
                 <Grid Margin="10">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition/></Grid.ColumnDefinitions>
@@ -28,6 +28,6 @@
             <GroupBox Header="縦タブの表示と順序" Foreground="{DynamicResource ItemForegroundBrush}"><DockPanel Margin="8"><StackPanel DockPanel.Dock="Right"><Button x:Name="UpButton" Content="上へ" Width="70" Click="Up_Click"/><Button x:Name="DownButton" Content="下へ" Width="70" Margin="0,6,0,0" Click="Down_Click"/></StackPanel><ListBox x:Name="TabsList" Background="{DynamicResource PanelBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}" SelectionChanged="TabsList_SelectionChanged"><ListBox.ItemTemplate><DataTemplate><CheckBox Content="{Binding Name}" IsChecked="{Binding IsVisible}" Click="Visibility_Click"/></DataTemplate></ListBox.ItemTemplate></ListBox></DockPanel></GroupBox>
             <GroupBox Header="設定の保存と読み込み" Foreground="{DynamicResource ItemForegroundBrush}" Margin="0,12,0,0"><StackPanel Orientation="Horizontal" Margin="10"><Button Content="Profileを保存" Click="Save_Click"/><Button Content="Profileを読み込む" Margin="8,0,0,0" Click="Load_Click"/></StackPanel></GroupBox>
             <Button Content="OK" Width="90" HorizontalAlignment="Right" Margin="0,16,0,0" IsDefault="True" Click="Ok_Click"/>
-        </StackPanel>
+        </StackPanel></ScrollViewer>
     </DockPanel>
 </Window>
