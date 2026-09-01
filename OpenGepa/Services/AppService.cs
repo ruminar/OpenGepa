@@ -153,8 +153,8 @@ public sealed class TrayService : IDisposable
     public void Show() => _icon.Visible = true;
     private void RefreshIcon()
     {
-        var custom = _app.IconSetService.GetOpenGepaIcon() ?? _app.Data?.DefaultIcons?.TrayIcon;
-        _icon.Icon = _app.IconService.TryLoadIcon(custom) ?? Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenGepa.exe")) ?? SystemIcons.Application;
+        var size = Math.Max(16, System.Windows.Forms.SystemInformation.SmallIconSize.Width); var custom = _app.IconSetService.GetOpenGepaIcon() ?? _app.Data?.DefaultIcons?.TrayIcon;
+        _icon.Icon = _app.IconService.TryLoadIcon(custom, size) ?? _app.IconService.TryExtractIcon(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenGepa.exe"), size) ?? SystemIcons.Application;
     }
     public void Dispose() { _icon.Visible = false; _icon.Dispose(); }
 }
@@ -247,7 +247,7 @@ public sealed class IconService
     {
         using var image = Image.FromStream(source); return SaveAsPng(image, name);
     }
-    public Icon? TryLoadIcon(string? relative)
+    public Icon? TryLoadIcon(string? relative, int size = 32)
     {
         if (string.IsNullOrWhiteSpace(relative)) return null;
         try
@@ -255,11 +255,24 @@ public sealed class IconService
             var path = Path.GetFullPath(Path.Combine(_paths.BaseDirectory, relative));
             var iconRoot = _paths.IconDirectory + Path.DirectorySeparatorChar; var iconSetRoot = _paths.IconSetDirectory + Path.DirectorySeparatorChar;
             if ((!path.StartsWith(iconRoot, StringComparison.OrdinalIgnoreCase) && !path.StartsWith(iconSetRoot, StringComparison.OrdinalIgnoreCase)) || !File.Exists(path)) return null;
-            if (Path.GetExtension(path).Equals(".ico", StringComparison.OrdinalIgnoreCase)) { using var ico = new Icon(path); return (Icon)ico.Clone(); }
-            using var image = Image.FromFile(path); using var bitmap = new Bitmap(image, new System.Drawing.Size(32, 32)); var handle = bitmap.GetHicon();
+            size = Math.Clamp(size, 16, 256);
+            if (Path.GetExtension(path).Equals(".ico", StringComparison.OrdinalIgnoreCase)) { using var ico = new Icon(path, new System.Drawing.Size(size, size)); return (Icon)ico.Clone(); }
+            using var image = Image.FromFile(path); using var bitmap = new Bitmap(image, new System.Drawing.Size(size, size)); var handle = bitmap.GetHicon();
             try { using var borrowed = Icon.FromHandle(handle); return (Icon)borrowed.Clone(); } finally { DestroyIcon(handle); }
         }
         catch { return null; }
+    }
+    public Icon? TryExtractIcon(string target, int size)
+    {
+        var icons = new[] { IntPtr.Zero }; var ids = new uint[1];
+        try
+        {
+            size = Math.Clamp(size, 16, 256);
+            if (PrivateExtractIcons(target, 0, size, size, icons, ids, 1, 0) == 0 || icons[0] == IntPtr.Zero) return null;
+            using var borrowed = Icon.FromHandle(icons[0]); return (Icon)borrowed.Clone();
+        }
+        catch { return null; }
+        finally { if (icons[0] != IntPtr.Zero) DestroyIcon(icons[0]); }
     }
     public void ImportTrayIcon(string source, string target)
     {
@@ -295,14 +308,7 @@ public sealed class IconService
     }
     private Icon? TryExtractLargeIcon(string target)
     {
-        var icons = new[] { IntPtr.Zero }; var ids = new uint[1];
-        try
-        {
-            if (PrivateExtractIcons(target, 0, 256, 256, icons, ids, 1, 0) == 0 || icons[0] == IntPtr.Zero) return null;
-            using var borrowed = Icon.FromHandle(icons[0]); return (Icon)borrowed.Clone();
-        }
-        catch { return null; }
-        finally { if (icons[0] != IntPtr.Zero) DestroyIcon(icons[0]); }
+        return TryExtractIcon(target, 256);
     }
     private string SaveAsPng(Image image, string name)
     {

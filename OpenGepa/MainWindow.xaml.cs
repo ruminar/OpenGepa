@@ -18,7 +18,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, HashSet<string>> _expandedByTab = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _searchByTab = new(StringComparer.OrdinalIgnoreCase);
     private string? _renderedTabId;
-    public MainWindow(AppService app) { InitializeComponent(); _app = app; _app.DataChanged += (_, _) => Dispatcher.Invoke(RefreshData); }
+    public MainWindow(AppService app) { InitializeComponent(); _app = app; _app.DataChanged += (_, _) => Dispatcher.BeginInvoke(RefreshData); }
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { e.Cancel = true; Hide(); }
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
 
@@ -33,7 +33,27 @@ public partial class MainWindow : Window
         var cursor = transform.Transform(new System.Windows.Point(point.X, point.Y)); var topLeft = transform.Transform(new System.Windows.Point(area.Left, area.Top)); var bottomRight = transform.Transform(new System.Windows.Point(area.Right, area.Bottom)); Left = Math.Max(topLeft.X, Math.Min(cursor.X - Width, bottomRight.X - Width)); Top = Math.Max(topLeft.Y, Math.Min(cursor.Y - Height, bottomRight.Y - Height));
     }
     private void Window_Deactivated(object sender, EventArgs e) { if (IsVisible && !_app.Data.IsLauncherPinned && !_dialogOpen) Hide(); }
-    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e) { if (e.Key == Key.Escape && !string.IsNullOrEmpty(SearchText.Text)) { SearchText.Clear(); e.Handled = true; } else if (e.Key == Key.Escape) { Hide(); e.Handled = true; } }
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key is Key.Up or Key.Down)
+        {
+            var delta = e.Key == Key.Up ? -1 : 1;
+            if (Keyboard.Modifiers == ModifierKeys.Shift) MoveTabSelection(delta); else MoveTreeSelection(delta);
+            e.Handled = true; return;
+        }
+        if (e.Key == Key.Apps || (e.Key == Key.F10 && Keyboard.Modifiers == ModifierKeys.Shift))
+        {
+            if (IsDescendantOf(Keyboard.FocusedElement as DependencyObject, TabsList)) OpenTabContextMenu(); else OpenTreeContextMenu();
+            e.Handled = true; return;
+        }
+        if (e.Key == Key.Escape && !string.IsNullOrEmpty(SearchText.Text)) { SearchText.Clear(); e.Handled = true; }
+        else if (e.Key == Key.Escape) { Hide(); e.Handled = true; }
+    }
+    private void Window_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (SearchText.IsKeyboardFocused || (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != ModifierKeys.None || string.IsNullOrEmpty(e.Text) || e.Text.Any(char.IsControl)) return;
+        SearchText.Focus(); SearchText.CaretIndex = SearchText.Text.Length; SearchText.SelectedText = e.Text; e.Handled = true;
+    }
     private void PinToggle_Changed(object sender, RoutedEventArgs e) { if (!_refreshing) { Topmost = PinToggle.IsChecked != true; Commit(data => data.IsLauncherPinned = PinToggle.IsChecked == true); } }
     private void SearchText_Changed(object sender, TextChangedEventArgs e) { if (_settingSearch) return; if (_renderedTabId is not null) _searchByTab[_renderedTabId] = SearchText.Text; ApplySearch(true); }
 
@@ -84,9 +104,16 @@ public partial class MainWindow : Window
 
     private void LauncherTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var hit = LauncherTree.InputHitTest(e.GetPosition(LauncherTree)) as DependencyObject; var node = FindAncestor<TreeViewItem>(hit)?.DataContext as LauncherNode; var menu = new ContextMenu();
-        if (node is null) { menu.Items.Add(Menu("すべて折りたたむ", CollapseAll)); menu.Items.Add(new Separator()); AddCreationItems(menu, null); } else { var actual = FindNode(_app.SelectedTab?.Children, node.Id); if (actual is null) return; AddNodeMenu(menu, actual); }
-        LauncherTree.ContextMenu = menu; menu.IsOpen = true; e.Handled = true;
+        var hit = LauncherTree.InputHitTest(e.GetPosition(LauncherTree)) as DependencyObject; var node = FindAncestor<TreeViewItem>(hit)?.DataContext as LauncherNode;
+        ShowTreeContextMenu(node, (FrameworkElement?)FindAncestor<TreeViewItem>(hit) ?? LauncherTree, false); e.Handled = true;
+    }
+    private void OpenTreeContextMenu() => ShowTreeContextMenu(LauncherTree.SelectedItem as LauncherNode, (FrameworkElement?)FindContainer(LauncherTree, LauncherTree.SelectedItem) ?? LauncherTree, true);
+    private void ShowTreeContextMenu(LauncherNode? node, FrameworkElement target, bool keyboard)
+    {
+        var menu = new ContextMenu();
+        if (node is null) { menu.Items.Add(Menu("すべて折りたたむ", CollapseAll)); menu.Items.Add(new Separator()); AddCreationItems(menu, null); }
+        else { var actual = FindNode(_app.SelectedTab?.Children, node.Id); if (actual is null) return; AddNodeMenu(menu, actual); }
+        LauncherTree.ContextMenu = menu; if (keyboard) OpenContextMenu(menu, target); else menu.IsOpen = true;
     }
     private void AddNodeMenu(ContextMenu menu, LauncherNode node)
     {
@@ -143,12 +170,15 @@ public partial class MainWindow : Window
     private void TabsList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         var item = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource);
-        if (item?.DataContext is not LauncherTab tab)
-        {
-            var globalMenu = new ContextMenu(); globalMenu.Items.Add(Menu("設定", _app.ShowSettings)); globalMenu.Items.Add(Menu("ランチャーの新規登録", NewTab)); TabsList.ContextMenu = globalMenu; globalMenu.IsOpen = true; e.Handled = true; return;
-        }
+        ShowTabContextMenu(item?.DataContext as LauncherTab, (FrameworkElement?)item ?? TabsList, false); e.Handled = true;
+    }
+    private void OpenTabContextMenu() => ShowTabContextMenu(TabsList.SelectedItem as LauncherTab ?? _app.SelectedTab, (FrameworkElement?)(TabsList.ItemContainerGenerator.ContainerFromItem(TabsList.SelectedItem) as ListBoxItem) ?? TabsList, true);
+    private void ShowTabContextMenu(LauncherTab? tab, FrameworkElement target, bool keyboard)
+    {
         var menu = new ContextMenu();
-        menu.Items.Add(Menu("このランチャーを編集", () => _app.ShowEditor(tab.Id))); menu.Items.Add(Menu("このランチャーを複製", () => DuplicateTab(tab))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("名前を変更", () => RenameTab(tab))); menu.Items.Add(Menu("アイコンを変更", () => ChangeTabIcon(tab))); menu.Items.Add(Menu("アイコンを標準に戻す", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).Icon = null))); menu.Items.Add(Menu("非表示にする", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).IsVisible = false))); menu.Items.Add(Menu("削除", () => DeleteTab(tab))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("設定", _app.ShowSettings)); menu.Items.Add(Menu("ランチャーの新規登録", NewTab)); item.ContextMenu = menu; menu.IsOpen = true; e.Handled = true;
+        if (tab is null) { menu.Items.Add(Menu("設定", _app.ShowSettings)); menu.Items.Add(Menu("ランチャーの新規登録", NewTab)); }
+        else { menu.Items.Add(Menu("このランチャーを編集", () => _app.ShowEditor(tab.Id))); menu.Items.Add(Menu("このランチャーを複製", () => DuplicateTab(tab))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("名前を変更", () => RenameTab(tab))); menu.Items.Add(Menu("アイコンを変更", () => ChangeTabIcon(tab))); menu.Items.Add(Menu("アイコンを標準に戻す", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).Icon = null))); menu.Items.Add(Menu("非表示にする", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).IsVisible = false))); menu.Items.Add(Menu("削除", () => DeleteTab(tab))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("設定", _app.ShowSettings)); menu.Items.Add(Menu("ランチャーの新規登録", NewTab)); }
+        TabsList.ContextMenu = menu; if (keyboard) OpenContextMenu(menu, target); else menu.IsOpen = true;
     }
     private void NewTab() { var d = new TextPromptDialog("ランチャーの新規登録", "名前") { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => data.Tabs.Add(new LauncherTab { Name = d.Value, Order = data.Tabs.Count })); }
     private void DeleteTab(LauncherTab tab) { if (ShowDialog(() => MessageBox.Show($"App Launcher\n「{tab.Name}」を削除しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning)) == MessageBoxResult.Yes) Commit(d => { d.Tabs.Remove(d.Tabs.First(x => x.Id == tab.Id)); NormalizeTabOrders(d.Tabs); }); }
@@ -161,6 +191,29 @@ public partial class MainWindow : Window
         try { var icon = _app.IconService.ImportImage(d.FileName, tab.Name); Commit(data => data.Tabs.First(x => x.Id == tab.Id).Icon = icon); } catch (Exception ex) { ShowDialog(() => MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
     }
 
+    private void MoveTreeSelection(int delta)
+    {
+        var items = EnumerateVisibleContainers(LauncherTree).Where(x => x.DataContext is LauncherNode).ToList(); if (items.Count == 0) return;
+        var current = items.FindIndex(x => ReferenceEquals(x.DataContext, LauncherTree.SelectedItem)); var index = current < 0 ? (delta > 0 ? 0 : items.Count - 1) : Math.Clamp(current + delta, 0, items.Count - 1);
+        var target = items[index]; target.IsSelected = true; target.Focus(); target.BringIntoView();
+    }
+    private void MoveTabSelection(int delta)
+    {
+        var tabs = _app.VisibleTabs; if (tabs.Count == 0) return;
+        var currentId = _app.SelectedTab?.Id; var current = currentId is null ? -1 : tabs.ToList().FindIndex(x => x.Id.Equals(currentId, StringComparison.OrdinalIgnoreCase)); var index = current < 0 ? (delta > 0 ? 0 : tabs.Count - 1) : Math.Clamp(current + delta, 0, tabs.Count - 1); var target = tabs[index];
+        TabsList.SelectedItem = target; _app.SelectTab(target.Id);
+        Dispatcher.BeginInvoke(() => { if (TabsList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem item) { item.Focus(); item.BringIntoView(); } });
+    }
+    private static void OpenContextMenu(ContextMenu menu, FrameworkElement target)
+    {
+        menu.PlacementTarget = target; menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom; menu.IsOpen = true;
+    }
+    private static bool IsDescendantOf(DependencyObject? value, DependencyObject ancestor)
+    {
+        while (value is not null) { if (ReferenceEquals(value, ancestor)) return true; value = VisualTreeHelper.GetParent(value); }
+        return false;
+    }
+
     private string SelectedTabId => _app.SelectedTab?.Id ?? throw new InvalidOperationException("表示中のApp Launcherがありません。");
     private void Commit(Action<OpenGepaData> change) { if (!_app.TryCommit(change, out var error)) ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
     private T ShowDialog<T>(Func<T> show) { _dialogOpen = true; try { return show(); } finally { _dialogOpen = false; } }
@@ -168,6 +221,7 @@ public partial class MainWindow : Window
     private void ExpandAll() { foreach (var item in EnumerateContainers(LauncherTree)) if (item.DataContext is GroupNode) item.IsExpanded = true; }
     private void RestoreExpanded(IReadOnlySet<string> ids) { foreach (var item in EnumerateContainers(LauncherTree)) if (item.DataContext is GroupNode group) item.IsExpanded = ids.Contains(group.Id); }
     private static IEnumerable<TreeViewItem> EnumerateContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; foreach (var child in EnumerateContainers(item)) yield return child; } }
+    private static IEnumerable<TreeViewItem> EnumerateVisibleContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; if (item.IsExpanded) foreach (var child in EnumerateVisibleContainers(item)) yield return child; } }
     private static LauncherNode? FindNode(IEnumerable<LauncherNode>? nodes, string id) { if (nodes is null) return null; foreach (var node in nodes) { if (node.Id == id) return node; if (node is GroupNode group) { var found = FindNode(group.Children, id); if (found is not null) return found; } } return null; }
     private static bool RemoveNode(ObservableCollection<LauncherNode> nodes, string id) { var item = nodes.FirstOrDefault(x => x.Id == id); if (item is not null) return nodes.Remove(item); return nodes.OfType<GroupNode>().Any(group => RemoveNode(group.Children, id)); }
     private static void NormalizeOrders(ObservableCollection<LauncherNode> nodes) { for (var i = 0; i < nodes.Count; i++) { nodes[i].Order = i; if (nodes[i] is GroupNode group) NormalizeOrders(group.Children); } }

@@ -88,7 +88,7 @@ static void TestTrayIconSetUsesIco()
         using (var image = new System.Drawing.Bitmap(48, 48)) { using var graphics = System.Drawing.Graphics.FromImage(image); graphics.Clear(System.Drawing.Color.CornflowerBlue); image.Save(source, System.Drawing.Imaging.ImageFormat.Png); }
         var iconService = new IconService(paths); var iconSet = new IconSetService(paths, iconService); iconSet.SetOpenGepaIcon(source);
         True(File.Exists(Path.Combine(paths.IconSetDirectory, "OpenGepa.ico"))); Equal("iconSet/OpenGepa.ico", iconSet.GetOpenGepaIcon());
-        using var icon = iconService.TryLoadIcon(iconSet.GetOpenGepaIcon()); True(icon is not null);
+        using var icon = iconService.TryLoadIcon(iconSet.GetOpenGepaIcon(), 16); True(icon is not null); Equal(16, icon!.Size.Width); Equal(16, icon.Size.Height);
     });
 }
 
