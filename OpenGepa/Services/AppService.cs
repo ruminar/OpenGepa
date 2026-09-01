@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
+using System.Net;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Windows;
 using Microsoft.Win32;
@@ -394,14 +396,15 @@ public sealed class IconSetService
 public sealed class SiteIconService
 {
     private readonly IconService _icons;
-    private static readonly HttpClient Client = new(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(5) };
+    private static readonly HttpClient Client = CreateClient();
+    private static HttpClient CreateClient() { var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(5) }; client.DefaultRequestHeaders.UserAgent.ParseAdd("OpenGepa/0.1"); return client; }
     public SiteIconService(IconService icons) => _icons = icons;
     public async Task<SiteIconFetchResult> TryFetchAsync(string url, string name)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return SiteIconFetchResult.Failed("HTTPまたはHTTPSのURLではありません。");
         try
         {
-            var iconUri = new Uri(uri.GetLeftPart(UriPartial.Authority) + "/favicon.ico");
+            var iconUri = await TryFindPageIconAsync(uri) ?? new Uri(uri.GetLeftPart(UriPartial.Authority) + "/favicon.ico");
             using var response = await Client.GetAsync(iconUri, HttpCompletionOption.ResponseHeadersRead);
             var requested = response.RequestMessage?.RequestUri ?? iconUri;
             if (!response.IsSuccessStatusCode) return SiteIconFetchResult.Failed($"取得先: {requested}\nHTTP: {(int)response.StatusCode} {response.ReasonPhrase}");
@@ -425,6 +428,26 @@ public sealed class SiteIconService
         }
         catch (Exception ex) { return SiteIconFetchResult.Failed(DescribeException(ex)); }
     }
+    public async Task<SiteTextFetchResult> TryFetchPageTitleAsync(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return SiteTextFetchResult.Failed();
+        try { var html = await Client.GetStringAsync(uri); var title = WebUtility.HtmlDecode(Regex.Match(html, "<title\\b[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline).Groups[1].Value); title = Regex.Replace(title, "\\s+", " ").Trim(); return string.IsNullOrWhiteSpace(title) ? SiteTextFetchResult.Failed() : SiteTextFetchResult.Succeeded(title); } catch { return SiteTextFetchResult.Failed(); }
+    }
+    private static async Task<Uri?> TryFindPageIconAsync(Uri page)
+    {
+        try
+        {
+            var html = await Client.GetStringAsync(page);
+            foreach (Match tag in Regex.Matches(html, "<link\\b[^>]*>", RegexOptions.IgnoreCase))
+            {
+                var text = tag.Value; var rel = Regex.Match(text, "\\brel\\s*=\\s*['\"]([^'\"]+)['\"]", RegexOptions.IgnoreCase).Groups[1].Value;
+                var href = Regex.Match(text, "\\bhref\\s*=\\s*['\"]([^'\"]+)['\"]", RegexOptions.IgnoreCase).Groups[1].Value;
+                if (rel.Contains("icon", StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(page, WebUtility.HtmlDecode(href), out var icon) && (icon.Scheme == Uri.UriSchemeHttp || icon.Scheme == Uri.UriSchemeHttps) && !icon.AbsolutePath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return icon;
+            }
+        }
+        catch { }
+        return null;
+    }
     private static string DescribeException(Exception exception) => exception.InnerException is null ? $"{exception.GetType().Name}: {exception.Message}" : $"{exception.GetType().Name}: {exception.Message}\n内部例外: {DescribeException(exception.InnerException)}";
 }
 
@@ -433,4 +456,10 @@ public sealed record SiteIconFetchResult(string? IconPath, string? Error)
     public bool IsSuccess => IconPath is not null;
     public static SiteIconFetchResult Succeeded(string iconPath) => new(iconPath, null);
     public static SiteIconFetchResult Failed(string error) => new(null, error);
+}
+public sealed record SiteTextFetchResult(string? Value)
+{
+    public bool IsSuccess => !string.IsNullOrWhiteSpace(Value);
+    public static SiteTextFetchResult Succeeded(string value) => new(value);
+    public static SiteTextFetchResult Failed() => new SiteTextFetchResult((string?)null);
 }

@@ -84,8 +84,15 @@ public partial class EditorWindow : Window
     private async Task TryAddUrlIcon(string id, string target, string name, string tabId)
     {
         var result = await _app.SiteIconService.TryFetchAsync(target, name);
-        if (!result.IsSuccess) { MessageBox.Show($"サイトのアイコンを取得できませんでした。\n\n対象: {target}\n\n{result.Error}", "OpenGepa - 診断", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        if (!result.IsSuccess) { MessageBox.Show("サイトのアイコンを取得できませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, id); if (found is not null) found.Icon = result.IconPath; }, tabId);
+    }
+    private async void FetchPageTitle()
+    {
+        if (Tab is null || GetSingleSelectedNode() is not UrlItem url) return;
+        var result = await _app.SiteIconService.TryFetchPageTitleAsync(url.Target);
+        if (!result.IsSuccess) { MessageBox.Show("ページタイトルを取得できませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        var tabId = Tab.Id; Commit(data => { var tab = data.Tabs.First(t => t.Id == tabId); var found = FindNode(tab.Children, url.Id) as UrlItem; if (found is not null) found.Name = UrlRegistrationRules.UniqueName(result.Value!, FindContainingCollection(tab.Children, found.Id)!, found.Id); }, tabId);
     }
     private void RenameSelectedNode()
     {
@@ -199,7 +206,7 @@ public partial class EditorWindow : Window
         if (node is not DirectoryItem) menu.Items.Add(ContextMenuItem("名前を変更", RenameSelectedNode, single));
         if (node is FileItem) menu.Items.Add(ContextMenuItem("起動対象を変更", ChangeSelectedTarget, single));
         else if (node is DirectoryItem) menu.Items.Add(ContextMenuItem("開く場所を変更", ChangeSelectedTarget, single));
-        else if (node is UrlItem) menu.Items.Add(ContextMenuItem("URLを変更", ChangeSelectedTarget, single));
+        else if (node is UrlItem) { menu.Items.Add(ContextMenuItem("URLを変更", ChangeSelectedTarget, single)); menu.Items.Add(ContextMenuItem("ページタイトルを名前に設定", FetchPageTitle, single)); }
         menu.Items.Add(new Separator());
         menu.Items.Add(ContextMenuItem("アイコンを変更", () => ChangeIcon_Click(this, new RoutedEventArgs()), single));
         if (node is FileItem) menu.Items.Add(ContextMenuItem("アイコンを再取得", () => RetryIcon_Click(this, new RoutedEventArgs()), single));
@@ -283,7 +290,8 @@ public partial class EditorWindow : Window
     private void AddDroppedUrl(string target, string? destinationId)
     {
         if (!Uri.TryCreate(target, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return;
-        AddNode(new UrlItem { Name = uri.Host, Target = uri.AbsoluteUri }, true, true, destinationId, true);
+        var siblings = destinationId is null ? Tab?.Children ?? [] : FindGroup(Tab?.Children ?? [], destinationId)?.Children ?? [];
+        AddNode(new UrlItem { Name = UrlRegistrationRules.UniqueDroppedName(uri, siblings), Target = uri.AbsoluteUri }, true, true, destinationId, true);
     }
     private void ShowDropInsertion(TreeViewItem target, bool after)
     {

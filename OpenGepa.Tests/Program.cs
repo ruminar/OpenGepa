@@ -28,6 +28,7 @@ var tests = new (string Name, Action Run)[]
     ("Editor expansion persistence", TestEditorExpansionPersistence),
     ("Tree range selection", TestTreeRangeSelection),
     ("Browser URL drop text", TestBrowserUrlDropText),
+    ("URL registration names", TestUrlRegistrationNames),
 };
 
 var failed = 0;
@@ -324,6 +325,12 @@ static void TestBrowserUrlDropText()
     Equal("http://example.com/", EditorWindow.ExtractUrlFromDropText("not a URL\nhttp://example.com")!);
     True(EditorWindow.ExtractUrlFromDropText("file:///C:/tool.exe") is null);
     True(EditorWindow.ExtractUrlFromDropText("javascript:alert(1)") is null);
+}
+static void TestUrlRegistrationNames()
+{
+    var nodes = new[] { new UrlItem { Name = "example.com" } }; var uri = new Uri("https://example.com/docs?a=1");
+    Equal("example.com/docs", UrlRegistrationRules.UniqueDroppedName(uri, nodes));
+    Equal("Title_2", UrlRegistrationRules.UniqueName("Title", new LauncherNode[] { new UrlItem { Name = "Title" }, new UrlItem { Name = "Title_1" } }));
 }
 
 static void WritePng(string path, System.Drawing.Color color)

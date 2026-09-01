@@ -126,7 +126,7 @@ public partial class MainWindow : Window
         if (node is not DirectoryItem) menu.Items.Add(Menu("名前を変更", () => RenameNode(node)));
         if (node is FileItem file) { menu.Items.Add(Menu("起動対象を変更", () => ChangeTarget(file))); menu.Items.Add(Menu("Windowsのプロパティを開く", () => OpenProperties(file))); }
         else if (node is DirectoryItem directory) menu.Items.Add(Menu("参照先を変更", () => ChangeDirectoryTarget(directory)));
-        else if (node is UrlItem url) menu.Items.Add(Menu("URLを変更", () => ChangeTarget(url)));
+        else if (node is UrlItem url) { menu.Items.Add(Menu("URLを変更", () => ChangeTarget(url))); menu.Items.Add(Menu("ページタイトルを名前に設定", () => _ = FetchPageTitle(url, SelectedTabId))); }
         menu.Items.Add(new Separator()); menu.Items.Add(Menu("アイコンを変更", () => ChangeNodeIcon(node))); if (node is FileItem retry) menu.Items.Add(Menu("アイコンを再取得", () => RetryNodeIcon(retry))); if (node is UrlItem site) menu.Items.Add(Menu("サイトのアイコンを取得", () => _ = FetchUrlIcon(site, SelectedTabId))); menu.Items.Add(Menu("アイコンを標準に戻す", () => SetNodeIcon(node.Id, null))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("削除", () => DeleteNode(node)));
     }
     private void AddCreationItems(ContextMenu menu, string? parentId)
@@ -165,9 +165,17 @@ public partial class MainWindow : Window
     private async Task FetchUrlIcon(UrlItem node, string tabId)
     {
         var result = await _app.SiteIconService.TryFetchAsync(node.Target, node.Name);
-        if (!result.IsSuccess) { ShowDialog(() => MessageBox.Show($"サイトのアイコンを取得できませんでした。\n\n対象: {node.Target}\n\n{result.Error}", "OpenGepa - 診断", MessageBoxButton.OK, MessageBoxImage.Warning)); return; }
+        if (!result.IsSuccess) { ShowDialog(() => MessageBox.Show("サイトのアイコンを取得できませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning)); return; }
         Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, node.Id); if (found is not null) found.Icon = result.IconPath; });
     }
+    private async Task FetchPageTitle(UrlItem node, string tabId)
+    {
+        var result = await _app.SiteIconService.TryFetchPageTitleAsync(node.Target);
+        if (!result.IsSuccess) { ShowDialog(() => MessageBox.Show("ページタイトルを取得できませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning)); return; }
+        Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, node.Id) as UrlItem; if (found is not null) found.Name = UrlRegistrationRules.UniqueName(result.Value!, FindContainingCollection(tab!.Children, found.Id)!, found.Id); });
+    }
+    private static ObservableCollection<LauncherNode>? FindContainingCollection(ObservableCollection<LauncherNode> nodes, string id)
+    { if (nodes.Any(x => x.Id == id)) return nodes; foreach (var group in nodes.OfType<GroupNode>()) { var found = FindContainingCollection(group.Children, id); if (found is not null) return found; } return null; }
     private void SetNodeIcon(string id, string? icon) => Commit(data => FindNode(data.Tabs.First(t => t.Id == SelectedTabId).Children, id)!.Icon = icon);
     private void OpenProperties(FileItem node) { if (!_app.LaunchService.OpenProperties(new WindowInteropHelper(this).Handle, node.Target)) ShowDialog(() => MessageBox.Show("Windowsのプロパティを開けませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
     private void DeleteNode(LauncherNode node) { if (ShowDialog(() => MessageBox.Show($"「{DataValidator.NodeLabel(node)}」を削除しますか？\nこの操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning)) == MessageBoxResult.Yes) Commit(data => { var tab = data.Tabs.First(t => t.Id == SelectedTabId); RemoveNode(tab.Children, node.Id); NormalizeOrders(tab.Children); }); }
