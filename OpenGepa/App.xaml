@@ -21,5 +21,12 @@
         <SolidColorBrush x:Key="SelectionBackgroundBrush" Color="#FFCCE5FF" />
         <SolidColorBrush x:Key="SelectionForegroundBrush" Color="#FF101828" />
         <SolidColorBrush x:Key="MutedForegroundBrush" Color="#FF667085" />
+        <Style TargetType="{x:Type TextBox}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource ItemForegroundBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="CaretBrush" Value="{DynamicResource ItemForegroundBrush}"/></Style>
+        <Style TargetType="{x:Type Button}"><Setter Property="Background" Value="{DynamicResource TabBackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource TabForegroundBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/></Style>
+        <Style TargetType="{x:Type ComboBox}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource ItemForegroundBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/></Style>
+        <Style TargetType="{x:Type ListBox}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource ItemForegroundBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/></Style>
+        <Style TargetType="{x:Type ContextMenu}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource ItemForegroundBrush}"/></Style>
+        <Style TargetType="{x:Type MenuItem}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource ItemForegroundBrush}"/></Style>
+        <Style TargetType="{x:Type ScrollViewer}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/></Style>
     </Application.Resources>
 </Application>

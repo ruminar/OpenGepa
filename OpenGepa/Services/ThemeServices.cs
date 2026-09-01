@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Interop;
+using System.Runtime.InteropServices;
 using OpenGepa.Models;
 
 namespace OpenGepa.Services;
@@ -45,6 +47,8 @@ public static class ThemePalette
         resources["AppBackgroundBrush"] = Brush(colors.AppBackground); resources["PanelBackgroundBrush"] = Brush(colors.PanelBackground); resources["BorderBrush"] = Brush(colors.Border);
         resources["TabBackgroundBrush"] = Brush(colors.TabBackground); resources["TabForegroundBrush"] = Brush(colors.TabForeground); resources["GroupBackgroundBrush"] = Brush(colors.GroupBackground); resources["GroupForegroundBrush"] = Brush(colors.GroupForeground);
         resources["ItemBackgroundBrush"] = Brush(colors.ItemBackground); resources["ItemForegroundBrush"] = Brush(colors.ItemForeground); resources["SelectionBackgroundBrush"] = Brush(colors.SelectionBackground); resources["SelectionForegroundBrush"] = Brush(colors.SelectionForeground); resources["MutedForegroundBrush"] = Brush(colors.MutedForeground);
+        var dark = appearance.Theme == "dark" ? 1 : 0; foreach (Window window in System.Windows.Application.Current.Windows) { var handle = new WindowInteropHelper(window).Handle; if (handle != IntPtr.Zero) DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int)); }
     }
     private static SolidColorBrush Brush(string hex) { var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex)!; var brush = new SolidColorBrush(color); brush.Freeze(); return brush; }
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }
