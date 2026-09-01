@@ -64,11 +64,17 @@ public partial class EditorWindow : Window
         var tabId = Tab.Id; var parentId = chooseDestination ? d.DestinationId : currentDestinationId;
         Commit(data => { var tab = data.Tabs.First(t => t.Id == tabId); var collection = parentId is null ? tab.Children : FindGroup(tab.Children, parentId)!.Children; node.Order = collection.Count; collection.Add(node); }, tabId);
         if (node is FileItem file) TryAddIcon(file.Id, file.Target, file.Name, tabId);
+        else if (node is UrlItem url) _ = TryAddUrlIcon(url.Id, url.Target, url.Name, tabId);
     }
     private void TryAddIcon(string id, string target, string name, string tabId)
     {
         var icon = _app.IconService.TryExtract(target, name); if (icon is null) return;
         Commit(data => FindNode(data.Tabs.First(t => t.Id == tabId).Children, id)!.Icon = icon, tabId);
+    }
+    private async Task TryAddUrlIcon(string id, string target, string name, string tabId)
+    {
+        var icon = await _app.SiteIconService.TryFetchAsync(target, name); if (icon is null) return;
+        Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, id); if (found is not null) found.Icon = icon; }, tabId);
     }
     private void RenameSelectedNode()
     {
@@ -185,6 +191,7 @@ public partial class EditorWindow : Window
         menu.Items.Add(new Separator());
         menu.Items.Add(ContextMenuItem("アイコンを変更", () => ChangeIcon_Click(this, new RoutedEventArgs()), single));
         if (node is FileItem) menu.Items.Add(ContextMenuItem("アイコンを再取得", () => RetryIcon_Click(this, new RoutedEventArgs()), single));
+        if (node is UrlItem) menu.Items.Add(ContextMenuItem("サイトのアイコンを取得", () => { if (Tab is not null && GetSingleSelectedNode() is UrlItem url) _ = TryAddUrlIcon(url.Id, url.Target, url.Name, Tab.Id); }, single));
         menu.Items.Add(ContextMenuItem("アイコンを標準に戻す", () => ResetIcon_Click(this, new RoutedEventArgs()), single));
         menu.Items.Add(new Separator());
         menu.Items.Add(ContextMenuItem("削除", DeleteSelected, true));

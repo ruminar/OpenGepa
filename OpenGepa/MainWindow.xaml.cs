@@ -127,7 +127,7 @@ public partial class MainWindow : Window
         if (node is FileItem file) { menu.Items.Add(Menu("起動対象を変更", () => ChangeTarget(file))); menu.Items.Add(Menu("Windowsのプロパティを開く", () => OpenProperties(file))); }
         else if (node is DirectoryItem directory) menu.Items.Add(Menu("参照先を変更", () => ChangeDirectoryTarget(directory)));
         else if (node is UrlItem url) menu.Items.Add(Menu("URLを変更", () => ChangeTarget(url)));
-        menu.Items.Add(new Separator()); menu.Items.Add(Menu("アイコンを変更", () => ChangeNodeIcon(node))); if (node is FileItem retry) menu.Items.Add(Menu("アイコンを再取得", () => RetryNodeIcon(retry))); if (node is UrlItem site) menu.Items.Add(Menu("サイトのアイコンを取得", () => _ = FetchUrlIcon(site))); menu.Items.Add(Menu("アイコンを標準に戻す", () => SetNodeIcon(node.Id, null))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("削除", () => DeleteNode(node)));
+        menu.Items.Add(new Separator()); menu.Items.Add(Menu("アイコンを変更", () => ChangeNodeIcon(node))); if (node is FileItem retry) menu.Items.Add(Menu("アイコンを再取得", () => RetryNodeIcon(retry))); if (node is UrlItem site) menu.Items.Add(Menu("サイトのアイコンを取得", () => _ = FetchUrlIcon(site, SelectedTabId))); menu.Items.Add(Menu("アイコンを標準に戻す", () => SetNodeIcon(node.Id, null))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("削除", () => DeleteNode(node)));
     }
     private void AddCreationItems(ContextMenu menu, string? parentId)
     {
@@ -148,7 +148,7 @@ public partial class MainWindow : Window
         using var folder = new System.Windows.Forms.FolderBrowserDialog { Description = "参照するDirectory（UNC可）" }; _dialogOpen = true; System.Windows.Forms.DialogResult result; try { result = folder.ShowDialog(); } finally { _dialogOpen = false; } if (result != System.Windows.Forms.DialogResult.OK) return;
         var d = new ItemDialog("Directory参照追加（UNC可）", "", folder.SelectedPath, true, showName: false) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) AddNode(new DirectoryItem { Target = d.Target }, parentId);
     }
-    private void AddUrl(string? parentId) { var d = new ItemDialog("URLを追加", "", "", true) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) { var url = new UrlItem { Name = d.ItemName, Target = d.Target }; AddNode(url, parentId); _ = FetchUrlIcon(url); } }
+    private void AddUrl(string? parentId) { var d = new ItemDialog("URLを追加", "", "", true) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) { var url = new UrlItem { Name = d.ItemName, Target = d.Target }; var tabId = SelectedTabId; AddNode(url, parentId); _ = FetchUrlIcon(url, tabId); } }
     private void AddNode(LauncherNode node, string? parentId)
     {
         var tabId = _app.SelectedTab?.Id; if (tabId is null) return; Commit(data => { var tab = data.Tabs.First(t => t.Id == tabId); var target = parentId is null ? tab.Children : (FindNode(tab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("登録先Groupが見つかりません。"); node.Order = target.Count; target.Add(node); });
@@ -162,7 +162,11 @@ public partial class MainWindow : Window
         try { SetNodeIcon(node.Id, _app.IconService.ImportImage(dialog.FileName, DataValidator.NodeLabel(node))); } catch (Exception ex) { ShowDialog(() => MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
     }
     private void RetryNodeIcon(FileItem node) { var icon = _app.IconService.TryExtract(node.Target, node.Name); if (icon is null) { ShowDialog(() => MessageBox.Show("対象ファイルからアイコンを取得できませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning)); return; } SetNodeIcon(node.Id, icon); }
-    private async Task FetchUrlIcon(UrlItem node) { var icon = await _app.SiteIconService.TryFetchAsync(node.Target, node.Name); if (icon is not null) SetNodeIcon(node.Id, icon); }
+    private async Task FetchUrlIcon(UrlItem node, string tabId)
+    {
+        var icon = await _app.SiteIconService.TryFetchAsync(node.Target, node.Name); if (icon is null) return;
+        Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, node.Id); if (found is not null) found.Icon = icon; });
+    }
     private void SetNodeIcon(string id, string? icon) => Commit(data => FindNode(data.Tabs.First(t => t.Id == SelectedTabId).Children, id)!.Icon = icon);
     private void OpenProperties(FileItem node) { if (!_app.LaunchService.OpenProperties(new WindowInteropHelper(this).Handle, node.Target)) ShowDialog(() => MessageBox.Show("Windowsのプロパティを開けませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
     private void DeleteNode(LauncherNode node) { if (ShowDialog(() => MessageBox.Show($"「{DataValidator.NodeLabel(node)}」を削除しますか？\nこの操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning)) == MessageBoxResult.Yes) Commit(data => { var tab = data.Tabs.First(t => t.Id == SelectedTabId); RemoveNode(tab.Children, node.Id); NormalizeOrders(tab.Children); }); }
