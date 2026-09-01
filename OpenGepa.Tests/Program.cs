@@ -27,6 +27,7 @@ var tests = new (string Name, Action Run)[]
     ("Destination choices", TestDestinationChoices),
     ("Editor expansion persistence", TestEditorExpansionPersistence),
     ("Tree range selection", TestTreeRangeSelection),
+    ("Browser URL drop text", TestBrowserUrlDropText),
 };
 
 var failed = 0;
@@ -315,6 +316,14 @@ static void TestTreeRangeSelection()
     var first = TreeSelectionLogic.Apply([], visible, null, "b", false, false); Equal("b", first.AnchorId); Equal(1, first.Selected.Count);
     var range = TreeSelectionLogic.Apply(first.Selected, visible, first.AnchorId, "d", true, false); True(range.Selected.SetEquals(["b", "c", "d"])); Equal("b", range.AnchorId); Equal("d", range.PrimaryId);
     var toggled = TreeSelectionLogic.Apply(range.Selected, visible, range.AnchorId, "c", false, true); True(toggled.Selected.SetEquals(["b", "d"]));
+}
+
+static void TestBrowserUrlDropText()
+{
+    Equal("https://example.com/path?q=1", EditorWindow.ExtractUrlFromDropText("# browser URL\r\nhttps://example.com/path?q=1\r\n")!);
+    Equal("http://example.com/", EditorWindow.ExtractUrlFromDropText("not a URL\nhttp://example.com")!);
+    True(EditorWindow.ExtractUrlFromDropText("file:///C:/tool.exe") is null);
+    True(EditorWindow.ExtractUrlFromDropText("javascript:alert(1)") is null);
 }
 
 static void WritePng(string path, System.Drawing.Color color)

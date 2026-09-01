@@ -26,6 +26,6 @@
             <TextBlock x:Name="TabNameText" Width="220" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource ItemForegroundBrush}"/>
             <Button Content="名前変更" Margin="8,0,0,0" Click="RenameTab_Click"/>
         </StackPanel>
-        <Border Background="{DynamicResource PanelBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6"><TreeView x:Name="EditorTree" Background="Transparent" Padding="8" AllowDrop="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" PreviewKeyDown="EditorTree_PreviewKeyDown" PreviewMouseLeftButtonDown="EditorTree_PreviewMouseLeftButtonDown" PreviewMouseRightButtonDown="EditorTree_PreviewMouseRightButtonDown" MouseMove="EditorTree_MouseMove" DragOver="EditorTree_DragOver" Drop="EditorTree_Drop"/></Border>
+        <Border Background="{DynamicResource PanelBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6"><AdornerDecorator><TreeView x:Name="EditorTree" Background="Transparent" Padding="8" AllowDrop="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" PreviewKeyDown="EditorTree_PreviewKeyDown" PreviewMouseLeftButtonDown="EditorTree_PreviewMouseLeftButtonDown" PreviewMouseRightButtonDown="EditorTree_PreviewMouseRightButtonDown" MouseMove="EditorTree_MouseMove" DragOver="EditorTree_DragOver" DragLeave="EditorTree_DragLeave" Drop="EditorTree_Drop"/></AdornerDecorator></Border>
     </DockPanel>
 </Window>

@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -26,8 +28,16 @@ public partial class EditorWindow : Window
     private string? _selectionAnchorId;
     private string? _primarySelectedId;
     private EditorRootNode? _editorRoot;
+    private AdornerLayer? _dropAdornerLayer;
+    private TreeDropInsertionAdorner? _dropAdorner;
     private const string NodeDragFormat = "OpenGepa.LauncherNodeId";
-    public EditorWindow(AppService app, string tabId) { InitializeComponent(); _app = app; _tabId = tabId; EditorTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler((_, _) => Dispatcher.BeginInvoke(RestoreTreeState))); _app.DataChanged += (_, _) => Dispatcher.Invoke(RefreshData); }
+    public EditorWindow(AppService app, string tabId)
+    {
+        InitializeComponent(); _app = app; _tabId = tabId;
+        EditorTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler((_, _) => Dispatcher.BeginInvoke(RestoreTreeState)));
+        EditorTree.AddHandler(TreeViewItem.CollapsedEvent, new RoutedEventHandler((_, e) => { if (e.OriginalSource is TreeViewItem { DataContext: EditorRootNode } root) Dispatcher.BeginInvoke(() => root.IsExpanded = true); }));
+        _app.DataChanged += (_, _) => Dispatcher.Invoke(RefreshData);
+    }
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { e.Cancel = true; Hide(); }
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
     public void RefreshData()
@@ -156,8 +166,11 @@ public partial class EditorWindow : Window
     }
     private void Window_Drop(object sender, System.Windows.DragEventArgs e)
     {
-        if (e.Handled || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return; var paths = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop)!;
+        if (e.Handled) return;
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = container?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
+        if (TryGetDroppedUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
+        if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
+        var paths = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop)!;
         foreach (var path in paths) { if (File.Exists(path)) AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(path), Target = path }, true, true, destinationId, true); else if (Directory.Exists(path)) AddNode(new DirectoryItem { Target = path }, true, true, destinationId, true); }
     }
     private void EditorTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -172,17 +185,15 @@ public partial class EditorWindow : Window
     private void EditorTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
-        if (container?.DataContext is EditorRootNode)
+        if (container?.DataContext is EditorRootNode || container is null)
         {
-            SelectedIds.Clear(); _selectionAnchorId = null; _primarySelectedId = null; ApplySelectionVisuals(); container.Focus();
-            var rootMenu = new ContextMenu();
-            AddCreationItems(rootMenu);
-            container.ContextMenu = rootMenu; rootMenu.IsOpen = true; e.Handled = true; return;
+            OpenRootContextMenu(container as FrameworkElement ?? EditorTree); e.Handled = true; return;
         }
         if (container?.DataContext is not LauncherNode node) return;
         if (!SelectedIds.Contains(node.Id)) SelectOnly(node.Id, container); else { _primarySelectedId = node.Id; ApplySelectionVisuals(); container.Focus(); }
         var single = GetSelectedNodes().Count == 1;
         var menu = new ContextMenu();
+        menu.Items.Add(ContextMenuItem("すべて折りたたむ", CollapseAll, true)); menu.Items.Add(new Separator());
         if (node is GroupNode) { AddCreationItems(menu); menu.Items.Add(new Separator()); }
         if (node is not DirectoryItem) menu.Items.Add(ContextMenuItem("名前を変更", RenameSelectedNode, single));
         if (node is FileItem) menu.Items.Add(ContextMenuItem("起動対象を変更", ChangeSelectedTarget, single));
@@ -196,6 +207,18 @@ public partial class EditorWindow : Window
         menu.Items.Add(new Separator());
         menu.Items.Add(ContextMenuItem("削除", DeleteSelected, true));
         container.ContextMenu = menu; menu.IsOpen = true; e.Handled = true;
+    }
+    private void OpenRootContextMenu(FrameworkElement target)
+    {
+        SelectedIds.Clear(); _selectionAnchorId = null; _primarySelectedId = null; ApplySelectionVisuals(); target.Focus();
+        var menu = new ContextMenu(); menu.Items.Add(ContextMenuItem("すべて折りたたむ", CollapseAll, true)); menu.Items.Add(new Separator()); AddCreationItems(menu);
+        target.ContextMenu = menu; menu.IsOpen = true;
+    }
+    private void CollapseAll()
+    {
+        foreach (var container in EnumerateAllContainers(EditorTree)) if (container.DataContext is GroupNode) container.IsExpanded = false;
+        if (_currentTabId is not null) _expandedByTab[_currentTabId] = [];
+        EnsureRootExpanded();
     }
     private void AddCreationItems(ContextMenu menu)
     {
@@ -220,14 +243,29 @@ public partial class EditorWindow : Window
     }
     private void EditorTree_DragOver(object sender, System.Windows.DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(NodeDragFormat)) { e.Effects = System.Windows.DragDropEffects.Move; e.Handled = true; }
-        else if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) e.Effects = System.Windows.DragDropEffects.Copy;
+        if (e.Data.GetDataPresent(NodeDragFormat))
+        {
+            var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var targetNode = container?.DataContext as LauncherNode;
+            var relativeY = container is null || container.ActualHeight <= 0 ? .5 : e.GetPosition(container).Y / container.ActualHeight;
+            var enterGroup = targetNode is GroupNode && relativeY is >= .25 and <= .75;
+            if (container is null || enterGroup) ClearDropInsertion(); else ShowDropInsertion(container, relativeY > .5);
+            e.Effects = System.Windows.DragDropEffects.Move; e.Handled = true;
+        }
+        else
+        {
+            ClearDropInsertion();
+            if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) || TryGetDroppedUrl(e.Data, out _)) { e.Effects = System.Windows.DragDropEffects.Copy; e.Handled = true; }
+        }
     }
+    private void EditorTree_DragLeave(object sender, System.Windows.DragEventArgs e) => ClearDropInsertion();
     private void EditorTree_Drop(object sender, System.Windows.DragEventArgs e)
     {
+        ClearDropInsertion();
         if (!e.Data.GetDataPresent(NodeDragFormat))
         {
-            if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) { var externalTarget = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); if (externalTarget?.DataContext is LauncherNode externalNode) SelectOnly(externalNode.Id, externalTarget); }
+            var externalTarget = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = externalTarget?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
+            if (TryGetDroppedUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
+            if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) && externalTarget?.DataContext is LauncherNode externalNode) SelectOnly(externalNode.Id, externalTarget);
             return;
         }
         e.Handled = true; if (Tab is null) return;
@@ -240,6 +278,46 @@ public partial class EditorWindow : Window
         var targetId = enterGroup ? null : targetNode?.Id; var after = relativeY > .5;
         var tabId = Tab.Id;
         Commit(data => MoveNodes(data, drag.SourceTabId, tabId, drag.NodeIds, parentId, targetId, after), tabId);
+    }
+    private void AddDroppedUrl(string target, string? destinationId)
+    {
+        if (!Uri.TryCreate(target, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return;
+        AddNode(new UrlItem { Name = uri.Host, Target = uri.AbsoluteUri }, true, true, destinationId, true);
+    }
+    private void ShowDropInsertion(TreeViewItem target, bool after)
+    {
+        if (_dropAdorner is not null && ReferenceEquals(_dropAdorner.AdornedElement, target) && _dropAdornerAfter == after) return;
+        ClearDropInsertion(); _dropAdornerLayer = AdornerLayer.GetAdornerLayer(target); if (_dropAdornerLayer is null) return;
+        _dropAdorner = new TreeDropInsertionAdorner(target, after); _dropAdornerAfter = after; _dropAdornerLayer.Add(_dropAdorner);
+    }
+    private bool _dropAdornerAfter;
+    private void ClearDropInsertion()
+    {
+        if (_dropAdorner is not null && _dropAdornerLayer is not null) _dropAdornerLayer.Remove(_dropAdorner);
+        _dropAdorner = null; _dropAdornerLayer = null;
+    }
+    private static bool TryGetDroppedUrl(System.Windows.IDataObject data, out string url)
+    {
+        foreach (var format in new[] { System.Windows.DataFormats.UnicodeText, System.Windows.DataFormats.Text, "text/uri-list", "UniformResourceLocator", "UniformResourceLocatorW" })
+        {
+            if (!data.GetDataPresent(format)) continue;
+            var value = data.GetData(format); var text = value as string;
+            if (text is null && value is Stream stream)
+            {
+                using var copy = new MemoryStream(); stream.CopyTo(copy); text = format == "UniformResourceLocatorW" ? Encoding.Unicode.GetString(copy.ToArray()) : Encoding.UTF8.GetString(copy.ToArray());
+            }
+            if (text is null) continue;
+            var parsed = ExtractUrlFromDropText(text);
+            if (parsed is not null) { url = parsed; return true; }
+        }
+        url = ""; return false;
+    }
+    public static string? ExtractUrlFromDropText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        foreach (var line in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => !x.StartsWith('#')))
+            if (Uri.TryCreate(line, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)) return uri.AbsoluteUri;
+        return null;
     }
     private bool Commit(Action<OpenGepaData> action, string? tabId)
     {
@@ -310,11 +388,14 @@ public partial class EditorWindow : Window
     }
     private void RestoreTreeState()
     {
-        if (_currentTabId is null) return; EditorTree.UpdateLayout();
-        if (EditorTree.Items.Count > 0 && EditorTree.ItemContainerGenerator.ContainerFromItem(EditorTree.Items[0]) is TreeViewItem rootContainer) { rootContainer.IsExpanded = true; rootContainer.UpdateLayout(); }
+        if (_currentTabId is null) return; EditorTree.UpdateLayout(); EnsureRootExpanded();
         var expanded = _expandedByTab.TryGetValue(_currentTabId, out var values) ? values : [];
         var validIds = Tab is null ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : Walk(Tab.Children).Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         SelectedIds.RemoveWhere(id => !validIds.Contains(id)); if (_primarySelectedId is not null && !validIds.Contains(_primarySelectedId)) _primarySelectedId = null; _primarySelectedId ??= SelectedIds.FirstOrDefault(); RestoreContainers(EditorTree, expanded); ApplySelectionVisuals();
+    }
+    private void EnsureRootExpanded()
+    {
+        if (EditorTree.Items.Count > 0 && EditorTree.ItemContainerGenerator.ContainerFromItem(EditorTree.Items[0]) is TreeViewItem rootContainer) { rootContainer.IsExpanded = true; rootContainer.UpdateLayout(); }
     }
     private void RestoreContainers(ItemsControl parent, HashSet<string> expanded)
     {
