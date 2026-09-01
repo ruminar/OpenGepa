@@ -354,8 +354,9 @@ LauncherTab上では次のメニューを表示する。
 - 起動画面の右クリックでも、追加、名前変更、target変更、アイコン操作、削除を行える。FileItemはWindows標準のプロパティ画面を開ける
 
 - Groupのシングルクリックで展開／折り畳みを切り替える
-- LauncherItemのシングルクリックで対象を起動する
-- LauncherItemをダブルクリックしても二重起動しない
+- FileItem、DirectoryItem、UrlItemごとに、設定画面からシングルクリックまたはダブルクリックでの起動を選択できる
+- 初期値はFileItemがシングルクリック、DirectoryItemとUrlItemがダブルクリックである
+- 選択したクリック回数と一致したときだけ対象を起動し、二重起動しない
 - キーボード選択後の`Enter`でLauncherItemを起動し、Groupは展開／折り畳みを切り替える
 - Groupをキーボード選択中の`Space`で展開／折り畳みを切り替える
 - LauncherItemの起動要求に成功した場合だけランチャーウインドウを閉じる
@@ -1104,7 +1105,11 @@ JSON例:
 }
 ```
 
-### 14.4 Save／Load
+### 14.4 項目の起動操作
+
+FileItem、DirectoryItem、UrlItemごとに、シングルクリックまたはダブルクリックで起動するかを設定できる。変更は即時保存する。キーボードの`Enter`は設定に関係なく起動する。
+
+### 14.5 Save／Load
 
 設定ウインドウからOpenGepa ProfileのSaveとLoadを実行できる。
 

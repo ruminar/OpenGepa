@@ -24,8 +24,18 @@ public sealed class OpenGepaData : ObservableModel
     public string? SelectedTabId { get; set; }
     public bool IsLauncherPinned { get; set; }
     public AppearanceSettings Appearance { get; set; } = new();
+    public ItemLaunchSettings ItemLaunch { get; set; } = new();
     public DefaultIconSettings DefaultIcons { get; set; } = new();
     public ObservableCollection<LauncherTab> Tabs { get; set; } = [];
+}
+
+public sealed class ItemLaunchSettings : ObservableModel
+{
+    private int _fileItemClickCount = 1; private int _directoryItemClickCount = 2; private int _urlItemClickCount = 2;
+    public int FileItemClickCount { get => _fileItemClickCount; set => SetField(ref _fileItemClickCount, value); }
+    public int DirectoryItemClickCount { get => _directoryItemClickCount; set => SetField(ref _directoryItemClickCount, value); }
+    public int UrlItemClickCount { get => _urlItemClickCount; set => SetField(ref _urlItemClickCount, value); }
+    public int GetClickCount(LauncherNode node) => node switch { FileItem => FileItemClickCount, DirectoryItem => DirectoryItemClickCount, UrlItem => UrlItemClickCount, _ => 0 };
 }
 
 public sealed class DefaultIconSettings : ObservableModel

@@ -61,7 +61,7 @@ public partial class MainWindow : Window
     private async void LauncherTree_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         var item = FindAncestor<TreeViewItem>((DependencyObject)e.OriginalSource); if (item?.DataContext is GroupNode) { if (FindAncestor<System.Windows.Controls.Primitives.ToggleButton>((DependencyObject)e.OriginalSource) is null) item.IsExpanded = !item.IsExpanded; e.Handled = true; return; }
-        if (item?.DataContext is LauncherNode launcher && (launcher is FileItem or DirectoryItem or UrlItem)) { e.Handled = true; await Launch(launcher); }
+        if (item?.DataContext is LauncherNode launcher && (launcher is FileItem or DirectoryItem or UrlItem) && e.ClickCount == _app.Data.ItemLaunch.GetClickCount(launcher)) { e.Handled = true; await Launch(launcher); }
     }
     private async void LauncherTree_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {

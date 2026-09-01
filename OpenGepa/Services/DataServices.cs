@@ -46,6 +46,7 @@ public sealed class DataValidator
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion)
             throw new InvalidDataException($"未対応のformatVersionです: {data.FormatVersion}");
         AppearanceRules.Validate(data.Appearance);
+        ValidateItemLaunch(data.ItemLaunch);
         ValidateDefaultIcons(data.DefaultIcons);
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ValidateNames(data.Tabs.Select(x => x.Name), "LauncherTab");
@@ -106,6 +107,11 @@ public sealed class DataValidator
     private static void ValidateDefaultIcons(DefaultIconSettings icons)
     {
         ValidateIcon(icons.GroupIcon, "Group既定"); ValidateIcon(icons.DirectoryIcon, "Directory既定"); ValidateIcon(icons.UrlIcon, "URL既定"); ValidateIcon(icons.TrayIcon, "トレイ既定");
+    }
+    private static void ValidateItemLaunch(ItemLaunchSettings settings)
+    {
+        if (settings.FileItemClickCount is not (1 or 2) || settings.DirectoryItemClickCount is not (1 or 2) || settings.UrlItemClickCount is not (1 or 2))
+            throw new InvalidDataException("項目の起動クリック数は1または2で指定してください。");
     }
     private static void ValidateIcon(string? icon, string name)
     {

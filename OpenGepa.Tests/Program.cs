@@ -17,6 +17,7 @@ var tests = new (string Name, Action Run)[]
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
     ("File dialog filter", TestFileDialogFilter),
     ("Appearance settings", TestAppearanceSettings),
+    ("Item launch click defaults", TestItemLaunchClickDefaults),
     ("Launcher tab duplication", TestLauncherTabDuplication),
     ("Cross-launcher move", TestCrossLauncherMove),
     ("Small icon size is preserved", TestSmallIconSizeIsPreserved),
@@ -172,6 +173,17 @@ static void TestAppearanceSettings()
     AppearanceRules.Validate(custom); Equal("custom", custom.Theme); Equal("#AABBCC", custom.GroupForegroundColor);
     var colors = ThemePalette.Resolve(custom); Equal("#112233", colors.GroupBackground); Equal("#778899", colors.ItemForeground);
     Throws<InvalidDataException>(() => AppearanceRules.Validate(new AppearanceSettings { GroupBackgroundColor = "blue" }));
+}
+
+static void TestItemLaunchClickDefaults()
+{
+    var settings = new ItemLaunchSettings(); Equal(1, settings.FileItemClickCount); Equal(2, settings.DirectoryItemClickCount); Equal(2, settings.UrlItemClickCount);
+    Throws<InvalidDataException>(() => new DataValidator().Validate(new OpenGepaData { ItemLaunch = new ItemLaunchSettings { UrlItemClickCount = 3 } }));
+    WithStore((_, store) =>
+    {
+        var data = Data(new LauncherTab { Name = "Main" }); data.ItemLaunch.DirectoryItemClickCount = 1;
+        Equal(1, store.Deserialize(store.Serialize(data)).ItemLaunch.DirectoryItemClickCount);
+    });
 }
 
 static void TestLauncherTabDuplication()

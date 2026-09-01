@@ -18,6 +18,7 @@ public partial class SettingsWindow : Window
         TabsList.SelectedItem = tabs.FirstOrDefault(tab => tab.Id == selectedTabId);
         var appearance = _app.Data.Appearance; ThemeCombo.SelectedValue = appearance.Theme; GroupBackgroundText.Text = appearance.GroupBackgroundColor; GroupForegroundText.Text = appearance.GroupForegroundColor; ItemBackgroundText.Text = appearance.LauncherItemBackgroundColor; ItemForegroundText.Text = appearance.LauncherItemForegroundColor; var custom = appearance.Theme == "custom"; GroupBackgroundText.IsEnabled = custom; GroupForegroundText.IsEnabled = custom; ItemBackgroundText.IsEnabled = custom; ItemForegroundText.IsEnabled = custom; CustomAppearancePanel.IsEnabled = custom;
         GroupIconPath.Text = _app.Data.DefaultIcons.GroupIcon ?? "標準"; DirectoryIconPath.Text = _app.Data.DefaultIcons.DirectoryIcon ?? "標準"; UrlIconPath.Text = _app.Data.DefaultIcons.UrlIcon ?? "標準"; TrayIconPath.Text = _app.IconSetService.GetOpenGepaIcon() ?? _app.Data.DefaultIcons.TrayIcon ?? "アプリ標準";
+        FileItemClickCombo.SelectedValue = _app.Data.ItemLaunch.FileItemClickCount.ToString(); DirectoryItemClickCombo.SelectedValue = _app.Data.ItemLaunch.DirectoryItemClickCount.ToString(); UrlItemClickCombo.SelectedValue = _app.Data.ItemLaunch.UrlItemClickCount.ToString();
         _refreshing = false; UpdateMoveButtons();
         if (restoreFocus && TabsList.SelectedItem is LauncherTab selected)
             Dispatcher.BeginInvoke(() => { if (TabsList.ItemContainerGenerator.ContainerFromItem(selected) is System.Windows.Controls.ListBoxItem item) item.Focus(); }, System.Windows.Threading.DispatcherPriority.Input);
@@ -35,6 +36,11 @@ public partial class SettingsWindow : Window
             data.Appearance.GroupBackgroundColor = GroupBackgroundText.Text; data.Appearance.GroupForegroundColor = GroupForegroundText.Text;
             data.Appearance.LauncherItemBackgroundColor = ItemBackgroundText.Text; data.Appearance.LauncherItemForegroundColor = ItemForegroundText.Text;
         });
+    }
+    private void ItemClickCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_refreshing || sender is not System.Windows.Controls.ComboBox combo || !int.TryParse(combo.SelectedValue?.ToString(), out var count)) return;
+        Commit(data => { if (combo == FileItemClickCombo) data.ItemLaunch.FileItemClickCount = count; else if (combo == DirectoryItemClickCombo) data.ItemLaunch.DirectoryItemClickCount = count; else data.ItemLaunch.UrlItemClickCount = count; });
     }
     private void DefaultIcon_Click(object sender, RoutedEventArgs e)
     {
