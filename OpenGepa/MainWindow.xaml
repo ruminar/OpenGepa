@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:OpenGepa"
         xmlns:models="clr-namespace:OpenGepa.Models"
         Title="OpenGepa" Width="480" Height="600" ResizeMode="NoResize"
-        WindowStyle="SingleBorderWindow" ShowInTaskbar="False" Topmost="True" Icon="Assets/OpenGepa.ico"
+        WindowStyle="SingleBorderWindow" ShowInTaskbar="False" Topmost="True"
         Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown" StateChanged="Window_StateChanged">
     <Window.Resources>
         <local:TreeRowWidthConverter x:Key="TreeRowWidthConverter"/>
