@@ -343,6 +343,28 @@ public sealed class IconSetService
     {
         _icons.ImportTrayIcon(source, Path.Combine(_paths.IconSetDirectory, "OpenGepa.ico"));
     }
+    public void DeleteOpenGepaIcon()
+    {
+        var ico = Path.Combine(_paths.IconSetDirectory, "OpenGepa.ico");
+        var legacyPng = Path.Combine(_paths.IconSetDirectory, "OpenGepa.png");
+        if (File.Exists(ico)) File.Delete(ico);
+        if (File.Exists(legacyPng)) File.Delete(legacyPng);
+    }
+    public string? GetDefaultNodeIcon(LauncherNode node) => node switch { GroupNode => GetDefaultIcon("group"), DirectoryItem => GetDefaultIcon("directory"), UrlItem => GetDefaultIcon("url"), _ => null };
+    public string? GetDefaultIcon(string kind)
+    {
+        var name = kind + "_default.png"; return File.Exists(Path.Combine(_paths.IconSetDirectory, name)) ? "iconSet/" + name : null;
+    }
+    public bool HasDefaultIcon(string kind) => GetDefaultIcon(kind) is not null;
+    public void SetDefaultIcon(string kind, string source)
+    {
+        var temporary = _icons.ImportImage(source, kind + "_default"); var sourcePath = Path.Combine(_paths.BaseDirectory, temporary.Replace('/', Path.DirectorySeparatorChar)); var target = Path.Combine(_paths.IconSetDirectory, kind + "_default.png");
+        try { File.Copy(sourcePath, target, true); } finally { if (File.Exists(sourcePath)) File.Delete(sourcePath); }
+    }
+    public void DeleteDefaultIcon(string kind)
+    {
+        var target = Path.Combine(_paths.IconSetDirectory, kind + "_default.png"); if (File.Exists(target)) File.Delete(target);
+    }
 
     public string? GetAppIcon(LauncherTab tab, IEnumerable<LauncherTab> tabs)
     {

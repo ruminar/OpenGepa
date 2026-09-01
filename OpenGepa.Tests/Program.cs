@@ -10,6 +10,7 @@ var tests = new (string Name, Action Run)[]
     ("Empty launcher state", TestEmptyLauncherState),
     ("Icon-set app icon cycle", TestIconSetAppIconCycle),
     ("Tray icon set uses ICO", TestTrayIconSetUsesIco),
+    ("Default node icons use iconSet", TestDefaultNodeIconsUseIconSet),
     ("Polymorphic round trip", TestRoundTrip),
     ("DirectoryItem has no name field", TestDirectoryItemHasNoNameField),
     ("Backup recovery", TestBackupRecovery),
@@ -91,6 +92,17 @@ static void TestTrayIconSetUsesIco()
     });
 }
 
+static void TestDefaultNodeIconsUseIconSet()
+{
+    WithStore((paths, _) =>
+    {
+        var source = Path.Combine(paths.BaseDirectory, "source.png"); WritePng(source, System.Drawing.Color.Goldenrod);
+        var iconSet = new IconSetService(paths, new IconService(paths)); iconSet.SetDefaultIcon("group", source);
+        Equal("iconSet/group_default.png", iconSet.GetDefaultIcon("group"));
+        iconSet.DeleteDefaultIcon("group"); True(iconSet.GetDefaultIcon("group") is null);
+    });
+}
+
 static void TestRoundTrip()
 {
     WithStore((_, store) =>
@@ -147,15 +159,17 @@ static void TestProfileRoundTrip()
         var app = AppService.Create(path); app.Initialize();
         var iconPath = Path.Combine(app.Paths.IconDirectory, "sample.png"); WritePng(iconPath, System.Drawing.Color.Red);
         var tab = new LauncherTab { Name = "Profile" }; tab.Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tools\\Tool.exe", Icon = "icon/sample.png" }); var data = Data(tab); data.Appearance = new AppearanceSettings { Theme = "custom", GroupBackgroundColor = "#112233", GroupForegroundColor = "#445566", LauncherItemBackgroundColor = "#778899", LauncherItemForegroundColor = "#AABBCC" }; app.ReplaceData(data);
+        WritePng(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"), System.Drawing.Color.Goldenrod);
         var profile = Path.Combine(path, "profile.ogp"); app.ProfileService.Save(profile);
         using (var archive = System.IO.Compression.ZipFile.OpenRead(profile))
         {
-            True(archive.GetEntry("manifest.json") is not null); True(archive.GetEntry($"menus/{tab.Id}.json") is not null); True(archive.GetEntry("icons/sample.png") is not null);
+            True(archive.GetEntry("manifest.json") is not null); True(archive.GetEntry($"menus/{tab.Id}.json") is not null); True(archive.GetEntry("icons/sample.png") is not null); True(archive.GetEntry("iconSet/group_default.png") is not null);
             using var reader = new StreamReader(archive.GetEntry($"menus/{tab.Id}.json")!.Open()); True(reader.ReadToEnd().Contains("icons/sample.png", StringComparison.Ordinal));
         }
         WritePng(iconPath, System.Drawing.Color.Blue);
+        File.Delete(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"));
         var loaded = app.ProfileService.Load(profile); var item = (FileItem)loaded.Tabs[0].Children[0];
-        Equal("icon/sample_2.png", item.Icon); True(File.Exists(Path.Combine(path, "icon", "sample_2.png"))); Equal("custom", loaded.Appearance.Theme); Equal("#112233", loaded.Appearance.GroupBackgroundColor);
+        Equal("icon/sample_2.png", item.Icon); True(File.Exists(Path.Combine(path, "icon", "sample_2.png"))); True(File.Exists(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"))); Equal("custom", loaded.Appearance.Theme); Equal("#112233", loaded.Appearance.GroupBackgroundColor);
     }
     finally { Directory.Delete(path, true); }
 }

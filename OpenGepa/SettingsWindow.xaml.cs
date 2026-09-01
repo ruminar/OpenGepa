@@ -17,7 +17,11 @@ public partial class SettingsWindow : Window
         _refreshing = true; StartupCheck.IsChecked = _app.StartupService.IsEnabled; var tabs = _app.Data.Tabs.OrderBy(t => t.Order).ToList(); TabsList.ItemsSource = tabs;
         TabsList.SelectedItem = tabs.FirstOrDefault(tab => tab.Id == selectedTabId);
         var appearance = _app.Data.Appearance; ThemeCombo.SelectedValue = appearance.Theme; GroupBackgroundText.Text = appearance.GroupBackgroundColor; GroupForegroundText.Text = appearance.GroupForegroundColor; ItemBackgroundText.Text = appearance.LauncherItemBackgroundColor; ItemForegroundText.Text = appearance.LauncherItemForegroundColor; var custom = appearance.Theme == "custom"; GroupBackgroundText.IsEnabled = custom; GroupForegroundText.IsEnabled = custom; ItemBackgroundText.IsEnabled = custom; ItemForegroundText.IsEnabled = custom; CustomAppearancePanel.IsEnabled = custom;
-        GroupIconPath.Text = _app.Data.DefaultIcons.GroupIcon ?? "標準"; DirectoryIconPath.Text = _app.Data.DefaultIcons.DirectoryIcon ?? "標準"; UrlIconPath.Text = _app.Data.DefaultIcons.UrlIcon ?? "標準"; TrayIconPath.Text = _app.IconSetService.GetOpenGepaIcon() ?? _app.Data.DefaultIcons.TrayIcon ?? "アプリ標準";
+        GroupIconPath.Text = _app.IconSetService.GetDefaultIcon("group") ?? _app.Data.DefaultIcons.GroupIcon ?? "標準";
+        DirectoryIconPath.Text = _app.IconSetService.GetDefaultIcon("directory") ?? _app.Data.DefaultIcons.DirectoryIcon ?? "標準";
+        UrlIconPath.Text = _app.IconSetService.GetDefaultIcon("url") ?? _app.Data.DefaultIcons.UrlIcon ?? "標準";
+        TrayIconPath.Text = _app.IconSetService.GetOpenGepaIcon() ?? _app.Data.DefaultIcons.TrayIcon ?? "アプリ標準";
+        GroupIconDelete.IsEnabled = _app.IconSetService.HasDefaultIcon("group"); DirectoryIconDelete.IsEnabled = _app.IconSetService.HasDefaultIcon("directory"); UrlIconDelete.IsEnabled = _app.IconSetService.HasDefaultIcon("url"); TrayIconDelete.IsEnabled = _app.IconSetService.HasOpenGepaIcon;
         FileItemClickCombo.SelectedValue = _app.Data.ItemLaunch.FileItemClickCount.ToString(); DirectoryItemClickCombo.SelectedValue = _app.Data.ItemLaunch.DirectoryItemClickCount.ToString(); UrlItemClickCombo.SelectedValue = _app.Data.ItemLaunch.UrlItemClickCount.ToString();
         _refreshing = false; UpdateMoveButtons();
         if (restoreFocus && TabsList.SelectedItem is LauncherTab selected)
@@ -54,8 +58,21 @@ public partial class SettingsWindow : Window
                 if (_app.IconSetService.HasOpenGepaIcon && MessageBox.Show("iconSet/OpenGepa.ico は既にあります。置き換えますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
                 _app.IconSetService.SetOpenGepaIcon(dialog.FileName); Commit(data => data.DefaultIcons.TrayIcon = null); return;
             }
-            var icon = _app.IconService.ImportImage(dialog.FileName, kind + "_default");
-            Commit(data => { if (kind == "group") data.DefaultIcons.GroupIcon = icon; else if (kind == "directory") data.DefaultIcons.DirectoryIcon = icon; else if (kind == "url") data.DefaultIcons.UrlIcon = icon; else data.DefaultIcons.TrayIcon = icon; });
+            if (_app.IconSetService.HasDefaultIcon(kind) && MessageBox.Show($"iconSet/{kind}_default.png は既にあります。置き換えますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            _app.IconSetService.SetDefaultIcon(kind, dialog.FileName);
+            Commit(data => { if (kind == "group") data.DefaultIcons.GroupIcon = null; else if (kind == "directory") data.DefaultIcons.DirectoryIcon = null; else if (kind == "url") data.DefaultIcons.UrlIcon = null; });
+        }
+        catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); }
+    }
+    private void DefaultIcon_Delete(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string kind) return;
+        var relative = kind == "tray" ? "iconSet/OpenGepa.ico" : $"iconSet/{kind}_default.png";
+        if (MessageBox.Show($"既存のアイコンファイル「{relative}」を削除し、標準アイコンへ戻しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        try
+        {
+            if (kind == "tray") { _app.IconSetService.DeleteOpenGepaIcon(); Commit(data => data.DefaultIcons.TrayIcon = null); }
+            else { _app.IconSetService.DeleteDefaultIcon(kind); Commit(data => { if (kind == "group") data.DefaultIcons.GroupIcon = null; else if (kind == "directory") data.DefaultIcons.DirectoryIcon = null; else if (kind == "url") data.DefaultIcons.UrlIcon = null; }); }
         }
         catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); }
     }

@@ -36,7 +36,7 @@ public sealed class NodeIconConverter : IValueConverter
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not LauncherNode node) return null;
-        var relative = node.Icon ?? (System.Windows.Application.Current is App ? node switch
+        var relative = node.Icon ?? (System.Windows.Application.Current is App ? App.Services.IconSetService.GetDefaultNodeIcon(node) ?? node switch
         {
             GroupNode => App.Services.Data.DefaultIcons.GroupIcon,
             DirectoryItem => App.Services.Data.DefaultIcons.DirectoryIcon,

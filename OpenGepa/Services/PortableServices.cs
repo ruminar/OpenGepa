@@ -49,13 +49,15 @@ public sealed class ProfileService
         using (var archive = ZipFile.Open(temp, ZipArchiveMode.Create))
         {
             WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 1, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.1.0" }, _app.Store.JsonOptions));
-            WriteEntry(archive, "settings.json", JsonSerializer.Serialize(new { selectedTabId = profileData.SelectedTabId, appearance = profileData.Appearance, tabs = profileData.Tabs.Select(t => new { t.Id, t.IsVisible, t.Order }) }, _app.Store.JsonOptions));
+            WriteEntry(archive, "settings.json", JsonSerializer.Serialize(new { selectedTabId = profileData.SelectedTabId, appearance = profileData.Appearance, itemLaunch = profileData.ItemLaunch, defaultIcons = profileData.DefaultIcons, tabs = profileData.Tabs.Select(t => new { t.Id, t.IsVisible, t.Order }) }, _app.Store.JsonOptions));
             foreach (var tab in profileData.Tabs) WriteEntry(archive, $"menus/{tab.Id}.json", JsonSerializer.Serialize(tab, _app.Store.JsonOptions));
             foreach (var iconPath in EnumerateIcons(_app.Data).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 var source = SafeRuntimePath(iconPath); if (!File.Exists(source)) continue;
                 archive.CreateEntryFromFile(source, "icons/" + Path.GetFileName(source), CompressionLevel.Optimal);
             }
+            foreach (var source in EnumerateIconSetFiles())
+                archive.CreateEntryFromFile(source, "iconSet/" + Path.GetFileName(source), CompressionLevel.Optimal);
         }
         using (var verify = ZipFile.OpenRead(temp))
         {
@@ -85,12 +87,15 @@ public sealed class ProfileService
             if (manifest.RootElement.GetProperty("format").GetString() != "OpenGepaProfile" || manifest.RootElement.GetProperty("formatVersion").GetInt32() != 1) throw new InvalidDataException("未対応のProfileです。");
             var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(tempRoot, "settings.json")));
             var appearance = settings.RootElement.TryGetProperty("appearance", out var appearanceElement) ? JsonSerializer.Deserialize<AppearanceSettings>(appearanceElement.GetRawText(), _app.Store.JsonOptions) ?? new AppearanceSettings() : new AppearanceSettings();
-            var data = new OpenGepaData { SelectedTabId = settings.RootElement.GetProperty("selectedTabId").GetString(), Appearance = appearance };
+            var itemLaunch = settings.RootElement.TryGetProperty("itemLaunch", out var itemLaunchElement) ? JsonSerializer.Deserialize<ItemLaunchSettings>(itemLaunchElement.GetRawText(), _app.Store.JsonOptions) ?? new ItemLaunchSettings() : new ItemLaunchSettings();
+            var defaultIcons = settings.RootElement.TryGetProperty("defaultIcons", out var defaultIconsElement) ? JsonSerializer.Deserialize<DefaultIconSettings>(defaultIconsElement.GetRawText(), _app.Store.JsonOptions) ?? new DefaultIconSettings() : new DefaultIconSettings();
+            var data = new OpenGepaData { SelectedTabId = settings.RootElement.GetProperty("selectedTabId").GetString(), Appearance = appearance, ItemLaunch = itemLaunch, DefaultIcons = defaultIcons };
             foreach (var menu in Directory.EnumerateFiles(Path.Combine(tempRoot, "menus"), "*.json"))
             {
                 var tab = JsonSerializer.Deserialize<LauncherTab>(File.ReadAllText(menu), _app.Store.JsonOptions) ?? throw new InvalidDataException("LauncherTabを読み込めません。");
                 RewriteIcons(tab, tempRoot); data.Tabs.Add(tab);
             }
+            ImportIconSetFiles(tempRoot);
             return _app.Store.Deserialize(_app.Store.Serialize(data));
         }
         finally { try { Directory.Delete(tempRoot, true); } catch { } }
@@ -128,6 +133,24 @@ public sealed class ProfileService
     {
         var full = Path.GetFullPath(Path.Combine(_app.Paths.BaseDirectory, relative));
         if (!full.StartsWith(_app.Paths.IconDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("不正なアイコンパスです。"); return full;
+    }
+    private IEnumerable<string> EnumerateIconSetFiles()
+    {
+        if (!Directory.Exists(_app.Paths.IconSetDirectory)) return [];
+        return Directory.EnumerateFiles(_app.Paths.IconSetDirectory, "*.*", SearchOption.TopDirectoryOnly)
+            .Where(path => Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase) || Path.GetExtension(path).Equals(".ico", StringComparison.OrdinalIgnoreCase));
+    }
+    private void ImportIconSetFiles(string tempRoot)
+    {
+        var sourceDirectory = Path.Combine(tempRoot, "iconSet");
+        if (!Directory.Exists(sourceDirectory)) return;
+        foreach (var source in Directory.EnumerateFiles(sourceDirectory, "*.*", SearchOption.TopDirectoryOnly))
+        {
+            var name = Path.GetFileName(source); var extension = Path.GetExtension(name);
+            if ((!extension.Equals(".png", StringComparison.OrdinalIgnoreCase) && !extension.Equals(".ico", StringComparison.OrdinalIgnoreCase)) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) continue;
+            var target = Path.Combine(_app.Paths.IconSetDirectory, name);
+            if (!File.Exists(target)) File.Copy(source, target, false);
+        }
     }
     private static IEnumerable<string> EnumerateIcons(OpenGepaData data)
     { foreach (var t in data.Tabs) { if (t.Icon is not null) yield return t.Icon; foreach (var n in Walk(t.Children)) if (n.Icon is not null) yield return n.Icon; } }
