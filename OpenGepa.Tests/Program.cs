@@ -7,7 +7,8 @@ var tests = new (string Name, Action Run)[]
 {
     ("Name normalization", TestNameNormalization),
     ("Sibling duplicate rejection", TestDuplicateNames),
-    ("Launcher availability safety", TestLauncherAvailabilitySafety),
+    ("Empty launcher state", TestEmptyLauncherState),
+    ("Icon-set app icon cycle", TestIconSetAppIconCycle),
     ("Polymorphic round trip", TestRoundTrip),
     ("DirectoryItem has no name field", TestDirectoryItemHasNoNameField),
     ("Backup recovery", TestBackupRecovery),
@@ -50,14 +51,30 @@ static void TestDuplicateNames()
     Throws<InvalidDataException>(() => new DataValidator().Validate(Data(tab)));
 }
 
-static void TestLauncherAvailabilitySafety()
+static void TestEmptyLauncherState()
 {
-    Throws<InvalidDataException>(() => new DataValidator().Validate(new OpenGepaData()));
+    new DataValidator().Validate(new OpenGepaData());
     var hidden = new LauncherTab { Name = "Hidden", IsVisible = false };
-    Throws<InvalidDataException>(() => new DataValidator().Validate(new OpenGepaData { Tabs = new ObservableCollection<LauncherTab> { hidden } }));
+    new DataValidator().Validate(new OpenGepaData { Tabs = new ObservableCollection<LauncherTab> { hidden } });
     var data = Data(new LauncherTab { Name = "Pinned" }); data.IsLauncherPinned = true;
     var restored = new DataStore(new AppPaths(Path.GetTempPath()), new DataValidator()).Deserialize(new DataStore(new AppPaths(Path.GetTempPath()), new DataValidator()).Serialize(data));
     True(restored.IsLauncherPinned);
+}
+
+static void TestIconSetAppIconCycle()
+{
+    WithStore((paths, _) =>
+    {
+        File.WriteAllText(Path.Combine(paths.IconSetDirectory, "appIcon4.png"), "x");
+        File.WriteAllText(Path.Combine(paths.IconSetDirectory, "appIcon1.png"), "x");
+        File.WriteAllText(Path.Combine(paths.IconSetDirectory, "appIcon2.png"), "x");
+        var tabs = new[] { new LauncherTab { Name = "A", Order = 0 }, new LauncherTab { Name = "B", Order = 1 }, new LauncherTab { Name = "C", Order = 2 }, new LauncherTab { Name = "D", Order = 3 } };
+        var icons = new IconSetService(paths, new IconService(paths));
+        Equal("iconSet/appIcon1.png", icons.GetAppIcon(tabs[0], tabs));
+        Equal("iconSet/appIcon2.png", icons.GetAppIcon(tabs[1], tabs));
+        Equal("iconSet/appIcon4.png", icons.GetAppIcon(tabs[2], tabs));
+        Equal("iconSet/appIcon1.png", icons.GetAppIcon(tabs[3], tabs));
+    });
 }
 
 static void TestRoundTrip()

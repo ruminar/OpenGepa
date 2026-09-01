@@ -14,7 +14,9 @@ public sealed class IconPathConverter : IValueConverter
         {
             var basePath = Path.GetFullPath(AppContext.BaseDirectory);
             var fullPath = Path.GetFullPath(Path.Combine(basePath, relative));
-            if (!fullPath.StartsWith(Path.Combine(basePath, "icon") + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath)) return null;
+            var iconRoot = Path.Combine(basePath, "icon") + Path.DirectorySeparatorChar;
+            var iconSetRoot = Path.Combine(basePath, "iconSet") + Path.DirectorySeparatorChar;
+            if ((!fullPath.StartsWith(iconRoot, StringComparison.OrdinalIgnoreCase) && !fullPath.StartsWith(iconSetRoot, StringComparison.OrdinalIgnoreCase)) || !File.Exists(fullPath)) return null;
             var decodeWidth = parameter is not null && int.TryParse(parameter.ToString(), out var requested) ? requested : 32;
             return LoadImage(fullPath, decodeWidth);
         }
@@ -42,6 +44,17 @@ public sealed class NodeIconConverter : IValueConverter
             _ => null
         } : null);
         return new IconPathConverter().Convert(relative, targetType, parameter, culture);
+    }
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+public sealed class TabIconConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not LauncherTab tab) return null;
+        var icon = tab.Icon ?? (System.Windows.Application.Current is App ? App.Services.IconSetService.GetAppIcon(tab, App.Services.Data.Tabs) : null);
+        return new IconPathConverter().Convert(icon, targetType, parameter, culture);
     }
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
 }

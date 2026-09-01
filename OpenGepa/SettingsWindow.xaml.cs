@@ -17,7 +17,7 @@ public partial class SettingsWindow : Window
         _refreshing = true; StartupCheck.IsChecked = _app.StartupService.IsEnabled; var tabs = _app.Data.Tabs.OrderBy(t => t.Order).ToList(); TabsList.ItemsSource = tabs;
         TabsList.SelectedItem = tabs.FirstOrDefault(tab => tab.Id == selectedTabId);
         var appearance = _app.Data.Appearance; ThemeCombo.SelectedValue = appearance.Theme; GroupBackgroundText.Text = appearance.GroupBackgroundColor; GroupForegroundText.Text = appearance.GroupForegroundColor; ItemBackgroundText.Text = appearance.LauncherItemBackgroundColor; ItemForegroundText.Text = appearance.LauncherItemForegroundColor; var custom = appearance.Theme == "custom"; GroupBackgroundText.IsEnabled = custom; GroupForegroundText.IsEnabled = custom; ItemBackgroundText.IsEnabled = custom; ItemForegroundText.IsEnabled = custom; CustomAppearancePanel.IsEnabled = custom;
-        GroupIconPath.Text = _app.Data.DefaultIcons.GroupIcon ?? "標準"; DirectoryIconPath.Text = _app.Data.DefaultIcons.DirectoryIcon ?? "標準"; UrlIconPath.Text = _app.Data.DefaultIcons.UrlIcon ?? "標準"; TrayIconPath.Text = _app.Data.DefaultIcons.TrayIcon ?? "アプリ標準";
+        GroupIconPath.Text = _app.Data.DefaultIcons.GroupIcon ?? "標準"; DirectoryIconPath.Text = _app.Data.DefaultIcons.DirectoryIcon ?? "標準"; UrlIconPath.Text = _app.Data.DefaultIcons.UrlIcon ?? "標準"; TrayIconPath.Text = _app.IconSetService.GetOpenGepaIcon() ?? _app.Data.DefaultIcons.TrayIcon ?? "アプリ標準";
         _refreshing = false; UpdateMoveButtons();
         if (restoreFocus && TabsList.SelectedItem is LauncherTab selected)
             Dispatcher.BeginInvoke(() => { if (TabsList.ItemContainerGenerator.ContainerFromItem(selected) is System.Windows.Controls.ListBoxItem item) item.Focus(); }, System.Windows.Threading.DispatcherPriority.Input);
@@ -43,6 +43,11 @@ public partial class SettingsWindow : Window
         if (dialog.ShowDialog(this) != true) return;
         try
         {
+            if (kind == "tray")
+            {
+                if (_app.IconSetService.HasOpenGepaIcon && MessageBox.Show("iconSet/OpenGepa.png は既にあります。置き換えますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+                _app.IconSetService.SetOpenGepaIcon(dialog.FileName); Commit(data => data.DefaultIcons.TrayIcon = null); return;
+            }
             var icon = _app.IconService.ImportImage(dialog.FileName, kind + "_default");
             Commit(data => { if (kind == "group") data.DefaultIcons.GroupIcon = icon; else if (kind == "directory") data.DefaultIcons.DirectoryIcon = icon; else if (kind == "url") data.DefaultIcons.UrlIcon = icon; else data.DefaultIcons.TrayIcon = icon; });
         }
@@ -51,13 +56,6 @@ public partial class SettingsWindow : Window
     private void Visibility_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not LauncherTab tab) return; var visible = ((System.Windows.Controls.CheckBox)sender).IsChecked == true;
-        if (!visible && _app.Data.Tabs.All(x => !x.IsVisible))
-        {
-            tab.IsVisible = true;
-            MessageBox.Show("表示中のApp Launcherを最低1つ残してください。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning);
-            RefreshData(tab.Id);
-            return;
-        }
         Commit(data =>
         {
             data.Tabs.First(t => t.Id == tab.Id).IsVisible = visible;

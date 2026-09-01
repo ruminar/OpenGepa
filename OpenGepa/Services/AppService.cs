@@ -22,6 +22,7 @@ public sealed class AppService
     {
         Paths = paths; Store = store;
         IconService = new IconService(paths);
+        IconSetService = new IconSetService(paths, IconService);
         SiteIconService = new SiteIconService(IconService);
         LaunchService = new LaunchService(this);
         StartupService = new StartupService();
@@ -31,6 +32,7 @@ public sealed class AppService
     public AppPaths Paths { get; }
     public DataStore Store { get; }
     public IconService IconService { get; }
+    public IconSetService IconSetService { get; }
     public SiteIconService SiteIconService { get; }
     public LaunchService LaunchService { get; }
     public StartupService StartupService { get; }
@@ -151,7 +153,7 @@ public sealed class TrayService : IDisposable
     public void Show() => _icon.Visible = true;
     private void RefreshIcon()
     {
-        var custom = _app.Data?.DefaultIcons?.TrayIcon;
+        var custom = _app.IconSetService.GetOpenGepaIcon() ?? _app.Data?.DefaultIcons?.TrayIcon;
         _icon.Icon = _app.IconService.TryLoadIcon(custom) ?? Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenGepa.exe")) ?? SystemIcons.Application;
     }
     public void Dispose() { _icon.Visible = false; _icon.Dispose(); }
@@ -293,6 +295,40 @@ public sealed class IconService
         if (safe.Length == 0) safe = "Icon"; if (safe.Length > 80) safe = safe[..80];
         var stem = $"{safe}_{DateTime.Now:yyyyMMdd_HHmmssfff}";
         for (var i = 1; ; i++) { var p = Path.Combine(_paths.IconDirectory, stem + (i == 1 ? "" : $"_{i}") + ".png"); try { return (p, new FileStream(p, FileMode.CreateNew, FileAccess.Write, FileShare.None)); } catch (IOException) { } }
+    }
+}
+
+public sealed class IconSetService
+{
+    private readonly AppPaths _paths; private readonly IconService _icons;
+    public IconSetService(AppPaths paths, IconService icons) { _paths = paths; _icons = icons; }
+
+    public bool HasOpenGepaIcon => File.Exists(Path.Combine(_paths.IconSetDirectory, "OpenGepa.png"));
+    public string? GetOpenGepaIcon() => HasOpenGepaIcon ? "iconSet/OpenGepa.png" : null;
+    public void SetOpenGepaIcon(string source)
+    {
+        var temporary = _icons.ImportImage(source, "OpenGepa");
+        var temporaryPath = Path.Combine(_paths.BaseDirectory, temporary.Replace('/', Path.DirectorySeparatorChar));
+        var target = Path.Combine(_paths.IconSetDirectory, "OpenGepa.png");
+        try { File.Copy(temporaryPath, target, true); } finally { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); }
+    }
+
+    public string? GetAppIcon(LauncherTab tab, IEnumerable<LauncherTab> tabs)
+    {
+        var icons = GetAppIcons(); if (icons.Count == 0) return null;
+        var ordered = tabs.OrderBy(x => x.Order).ToList(); var index = ordered.FindIndex(x => x.Id.Equals(tab.Id, StringComparison.OrdinalIgnoreCase));
+        return index < 0 ? null : icons[index % icons.Count];
+    }
+
+    private IReadOnlyList<string> GetAppIcons()
+    {
+        if (!Directory.Exists(_paths.IconSetDirectory)) return [];
+        return Directory.EnumerateFiles(_paths.IconSetDirectory, "*.png", SearchOption.TopDirectoryOnly)
+            .Select(path => new { Path = path, Name = Path.GetFileNameWithoutExtension(path) })
+            .Select(x => System.Text.RegularExpressions.Regex.Match(x.Name, @"^appIcon([1-9]\d*)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is var match && match.Success ? new { x.Path, Number = int.Parse(match.Groups[1].Value) } : null)
+            .Where(x => x is not null).Select(x => x!)
+            .OrderBy(x => x.Number).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase)
+            .Select(x => Path.GetRelativePath(_paths.BaseDirectory, x.Path).Replace('\\', '/')).ToList();
     }
 }
 

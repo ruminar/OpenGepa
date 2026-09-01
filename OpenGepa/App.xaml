@@ -7,6 +7,7 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:IconPathConverter x:Key="IconPathConverter" />
         <local:NodeIconConverter x:Key="NodeIconConverter" />
+        <local:TabIconConverter x:Key="TabIconConverter" />
         <local:TreeRowWidthConverter x:Key="TreeRowWidthConverter" />
         <SolidColorBrush x:Key="AppBackgroundBrush" Color="#FFF7F8FA" />
         <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#FFFFFFFF" />

@@ -15,9 +15,11 @@ public sealed class AppPaths
     public string LastGoodFile => Path.Combine(BaseDirectory, "opengepa.lastgood.json");
     public string TemporaryFile => Path.Combine(BaseDirectory, "opengepa.tmp");
     public string IconDirectory => Path.Combine(BaseDirectory, "icon");
+    public string IconSetDirectory => Path.Combine(BaseDirectory, "iconSet");
     public void EnsureWritable()
     {
         Directory.CreateDirectory(IconDirectory);
+        Directory.CreateDirectory(IconSetDirectory);
         var probe = Path.Combine(BaseDirectory, $".write-{Guid.NewGuid():N}.tmp");
         try { using var s = new FileStream(probe, FileMode.CreateNew); s.WriteByte(0); }
         finally { if (File.Exists(probe)) File.Delete(probe); }
@@ -45,8 +47,6 @@ public sealed class DataValidator
             throw new InvalidDataException($"未対応のformatVersionです: {data.FormatVersion}");
         AppearanceRules.Validate(data.Appearance);
         ValidateDefaultIcons(data.DefaultIcons);
-        if (data.Tabs.Count == 0) throw new InvalidDataException("App Launcherをすべて削除することはできません。");
-        if (!data.Tabs.Any(x => x.IsVisible)) throw new InvalidDataException("表示中のApp Launcherを最低1つ残してください。");
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ValidateNames(data.Tabs.Select(x => x.Name), "LauncherTab");
         ValidateOrders(data.Tabs.Select(x => x.Order), "LauncherTab");
