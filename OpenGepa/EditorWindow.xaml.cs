@@ -37,8 +37,9 @@ public partial class EditorWindow : Window
         EditorTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler((_, _) => Dispatcher.BeginInvoke(RestoreTreeState)));
         EditorTree.AddHandler(TreeViewItem.CollapsedEvent, new RoutedEventHandler((_, e) => { if (e.OriginalSource is TreeViewItem { DataContext: EditorRootNode } root) Dispatcher.BeginInvoke(() => root.IsExpanded = true); }));
         _app.DataChanged += (_, _) => Dispatcher.Invoke(RefreshData);
+        Loaded += (_, _) => Dispatcher.BeginInvoke(EnsureRootExpanded, System.Windows.Threading.DispatcherPriority.Loaded);
     }
-    protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { e.Cancel = true; Hide(); }
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { if (!App.IsExiting) { e.Cancel = true; Hide(); } }
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
     public void RefreshData()
     {
@@ -397,7 +398,7 @@ public partial class EditorWindow : Window
     }
     private void RestoreTreeState()
     {
-        if (_currentTabId is null) return; EditorTree.UpdateLayout(); EnsureRootExpanded();
+        if (_currentTabId is null) return; EditorTree.UpdateLayout(); EnsureRootExpanded(); Dispatcher.BeginInvoke(EnsureRootExpanded, System.Windows.Threading.DispatcherPriority.Loaded);
         var expanded = _expandedByTab.TryGetValue(_currentTabId, out var values) ? values : [];
         var validIds = Tab is null ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : Walk(Tab.Children).Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         SelectedIds.RemoveWhere(id => !validIds.Contains(id)); if (_primarySelectedId is not null && !validIds.Contains(_primarySelectedId)) _primarySelectedId = null; _primarySelectedId ??= SelectedIds.FirstOrDefault(); RestoreContainers(EditorTree, expanded); ApplySelectionVisuals();
