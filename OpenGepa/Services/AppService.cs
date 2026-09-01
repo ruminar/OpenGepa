@@ -175,7 +175,8 @@ public sealed class LaunchService
             {
                 if (!File.Exists(target))
                 {
-                    target = FindMovedFile(target) ?? throw new FileNotFoundException("登録されたファイルが見つかりません。", target);
+                    if (file.IsTargetMissing || FindMovedFile(target) is not string moved) { _app.TryCommit(data => ((FileItem)FindItem(data, file.Id)!).IsTargetMissing = true, out _); throw new FileNotFoundException("登録されたファイルが見つかりません。", target); }
+                    target = moved;
                     repaired = true;
                 }
             }
@@ -187,7 +188,7 @@ public sealed class LaunchService
             if (repaired && item is FileItem repairedFile)
             {
                 var newTarget = target;
-                if (!_app.TryCommit(data => FindItem(data, repairedFile.Id)!.Target = newTarget, out var saveError))
+                if (!_app.TryCommit(data => { var found = (FileItem)FindItem(data, repairedFile.Id)!; found.Target = newTarget; found.IsTargetMissing = false; }, out var saveError))
                     return (false, "起動には成功しましたが、補正したパスを保存できませんでした: " + saveError);
             }
             return (true, "");

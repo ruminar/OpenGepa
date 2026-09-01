@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
+using System.Windows.Interop;
 using OpenGepa.Models;
 
 namespace OpenGepa;
@@ -36,6 +37,7 @@ public sealed class NodeIconConverter : IValueConverter
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not LauncherNode node) return null;
+        if (node is FileItem { IsTargetMissing: true }) { var image = Imaging.CreateBitmapSourceFromHIcon(System.Drawing.SystemIcons.Error.Handle, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(32, 32)); image.Freeze(); return image; }
         var relative = node.Icon ?? (System.Windows.Application.Current is App ? App.Services.IconSetService.GetDefaultNodeIcon(node) ?? node switch
         {
             GroupNode => App.Services.Data.DefaultIcons.GroupIcon,

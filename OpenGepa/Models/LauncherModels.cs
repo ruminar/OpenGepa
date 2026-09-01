@@ -99,7 +99,7 @@ public abstract class NamedLauncherItem : LauncherNode
     public string Target { get => _target; set => SetField(ref _target, value); }
 }
 
-public sealed class FileItem : NamedLauncherItem { public override string DisplayGlyph => "▤"; }
+public sealed class FileItem : NamedLauncherItem { private bool _isTargetMissing; public bool IsTargetMissing { get => _isTargetMissing; set => SetField(ref _isTargetMissing, value); } public override string DisplayGlyph => "▤"; }
 public sealed class UrlItem : NamedLauncherItem { public override string DisplayGlyph => "◎"; }
 public sealed class DirectoryItem : LauncherNode
 {
@@ -134,6 +134,7 @@ public static class LauncherTabCopy
         copy.Order = source.Order;
         copy.Icon = source.Icon;
         if (copy is NamedLauncherItem item && source is NamedLauncherItem sourceTargetItem) item.Target = sourceTargetItem.Target;
+        if (copy is FileItem copyFile && source is FileItem sourceFile) copyFile.IsTargetMissing = sourceFile.IsTargetMissing;
         if (copy is DirectoryItem directory && source is DirectoryItem sourceDirectory) directory.Target = sourceDirectory.Target;
         return copy;
     }

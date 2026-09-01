@@ -107,7 +107,7 @@ public partial class EditorWindow : Window
         var title = selected switch { FileItem => "起動対象を変更", DirectoryItem => "開く場所を変更", UrlItem => "URLを変更", _ => "対象を変更" };
         var target = selected switch { NamedLauncherItem item => item.Target, DirectoryItem item => item.Target, _ => "" };
         var d = new TextPromptDialog(title, "対象", target) { Owner = this }; if (d.ShowDialog() != true) return;
-        var tabId = Tab.Id; Commit(data => { var found = FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id); if (found is NamedLauncherItem item) item.Target = d.Value; else if (found is DirectoryItem directory) directory.Target = d.Value; }, tabId);
+        var tabId = Tab.Id; Commit(data => { var found = FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id); if (found is NamedLauncherItem item) item.Target = d.Value; if (found is FileItem file) file.IsTargetMissing = false; else if (found is DirectoryItem directory) directory.Target = d.Value; }, tabId);
     }
     private void ChangeIcon_Click(object sender, RoutedEventArgs e)
     {
