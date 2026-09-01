@@ -51,7 +51,7 @@ public partial class SettingsWindow : Window
         {
             if (kind == "tray")
             {
-                if (_app.IconSetService.HasOpenGepaIcon && MessageBox.Show("iconSet/OpenGepa.png は既にあります。置き換えますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+                if (_app.IconSetService.HasOpenGepaIcon && MessageBox.Show("iconSet/OpenGepa.ico は既にあります。置き換えますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
                 _app.IconSetService.SetOpenGepaIcon(dialog.FileName); Commit(data => data.DefaultIcons.TrayIcon = null); return;
             }
             var icon = _app.IconService.ImportImage(dialog.FileName, kind + "_default");

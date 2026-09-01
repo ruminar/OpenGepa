@@ -9,6 +9,7 @@ var tests = new (string Name, Action Run)[]
     ("Sibling duplicate rejection", TestDuplicateNames),
     ("Empty launcher state", TestEmptyLauncherState),
     ("Icon-set app icon cycle", TestIconSetAppIconCycle),
+    ("Tray icon set uses ICO", TestTrayIconSetUsesIco),
     ("Polymorphic round trip", TestRoundTrip),
     ("DirectoryItem has no name field", TestDirectoryItemHasNoNameField),
     ("Backup recovery", TestBackupRecovery),
@@ -75,6 +76,18 @@ static void TestIconSetAppIconCycle()
         Equal("iconSet/appIcon2.png", icons.GetAppIcon(tabs[1], tabs));
         Equal("iconSet/appIcon4.png", icons.GetAppIcon(tabs[2], tabs));
         Equal("iconSet/appIcon1.png", icons.GetAppIcon(tabs[3], tabs));
+    });
+}
+
+static void TestTrayIconSetUsesIco()
+{
+    WithStore((paths, _) =>
+    {
+        var source = Path.Combine(paths.BaseDirectory, "source.png");
+        using (var image = new System.Drawing.Bitmap(48, 48)) { using var graphics = System.Drawing.Graphics.FromImage(image); graphics.Clear(System.Drawing.Color.CornflowerBlue); image.Save(source, System.Drawing.Imaging.ImageFormat.Png); }
+        var iconService = new IconService(paths); var iconSet = new IconSetService(paths, iconService); iconSet.SetOpenGepaIcon(source);
+        True(File.Exists(Path.Combine(paths.IconSetDirectory, "OpenGepa.ico"))); Equal("iconSet/OpenGepa.ico", iconSet.GetOpenGepaIcon());
+        using var icon = iconService.TryLoadIcon(iconSet.GetOpenGepaIcon()); True(icon is not null);
     });
 }
 

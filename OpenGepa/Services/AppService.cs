@@ -253,11 +253,45 @@ public sealed class IconService
         try
         {
             var path = Path.GetFullPath(Path.Combine(_paths.BaseDirectory, relative));
-            if (!path.StartsWith(_paths.IconDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) return null;
+            var iconRoot = _paths.IconDirectory + Path.DirectorySeparatorChar; var iconSetRoot = _paths.IconSetDirectory + Path.DirectorySeparatorChar;
+            if ((!path.StartsWith(iconRoot, StringComparison.OrdinalIgnoreCase) && !path.StartsWith(iconSetRoot, StringComparison.OrdinalIgnoreCase)) || !File.Exists(path)) return null;
+            if (Path.GetExtension(path).Equals(".ico", StringComparison.OrdinalIgnoreCase)) { using var ico = new Icon(path); return (Icon)ico.Clone(); }
             using var image = Image.FromFile(path); using var bitmap = new Bitmap(image, new System.Drawing.Size(32, 32)); var handle = bitmap.GetHicon();
             try { using var borrowed = Icon.FromHandle(handle); return (Icon)borrowed.Clone(); } finally { DestroyIcon(handle); }
         }
         catch { return null; }
+    }
+    public void ImportTrayIcon(string source, string target)
+    {
+        if (Path.GetExtension(source).Equals(".ico", StringComparison.OrdinalIgnoreCase))
+        {
+            using var icon = new Icon(source); File.Copy(source, target, true); return;
+        }
+        using var image = Image.FromFile(source); SaveAsIco(image, target);
+    }
+    private static void SaveAsIco(Image image, string target)
+    {
+        var max = Math.Max(1, Math.Min(image.Width, image.Height)); var sizes = new[] { 16, 20, 24, 32, 40, 48, 64, 256 }.Where(size => size <= max).ToList(); if (sizes.Count == 0) sizes.Add(max);
+        var frames = new List<byte[]>();
+        foreach (var size in sizes)
+        {
+            using var bitmap = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb); using var graphics = Graphics.FromImage(bitmap); graphics.Clear(Color.Transparent); graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            var scale = Math.Min((double)size / image.Width, (double)size / image.Height); var width = image.Width * scale; var height = image.Height * scale; graphics.DrawImage(image, new RectangleF((float)((size - width) / 2), (float)((size - height) / 2), (float)width, (float)height));
+            using var frame = new MemoryStream(); bitmap.Save(frame, System.Drawing.Imaging.ImageFormat.Png); frames.Add(frame.ToArray());
+        }
+        var temporary = target + ".tmp";
+        try
+        {
+            using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new BinaryWriter(stream))
+            {
+                writer.Write((ushort)0); writer.Write((ushort)1); writer.Write((ushort)frames.Count); var offset = 6 + (16 * frames.Count);
+                for (var index = 0; index < frames.Count; index++) { var size = sizes[index]; writer.Write((byte)(size == 256 ? 0 : size)); writer.Write((byte)(size == 256 ? 0 : size)); writer.Write((byte)0); writer.Write((byte)0); writer.Write((ushort)1); writer.Write((ushort)32); writer.Write(frames[index].Length); writer.Write(offset); offset += frames[index].Length; }
+                foreach (var frame in frames) writer.Write(frame);
+            }
+            using var verify = new Icon(temporary); File.Move(temporary, target, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
     private Icon? TryExtractLargeIcon(string target)
     {
@@ -303,14 +337,11 @@ public sealed class IconSetService
     private readonly AppPaths _paths; private readonly IconService _icons;
     public IconSetService(AppPaths paths, IconService icons) { _paths = paths; _icons = icons; }
 
-    public bool HasOpenGepaIcon => File.Exists(Path.Combine(_paths.IconSetDirectory, "OpenGepa.png"));
-    public string? GetOpenGepaIcon() => HasOpenGepaIcon ? "iconSet/OpenGepa.png" : null;
+    public bool HasOpenGepaIcon => File.Exists(Path.Combine(_paths.IconSetDirectory, "OpenGepa.ico"));
+    public string? GetOpenGepaIcon() => HasOpenGepaIcon ? "iconSet/OpenGepa.ico" : File.Exists(Path.Combine(_paths.IconSetDirectory, "OpenGepa.png")) ? "iconSet/OpenGepa.png" : null;
     public void SetOpenGepaIcon(string source)
     {
-        var temporary = _icons.ImportImage(source, "OpenGepa");
-        var temporaryPath = Path.Combine(_paths.BaseDirectory, temporary.Replace('/', Path.DirectorySeparatorChar));
-        var target = Path.Combine(_paths.IconSetDirectory, "OpenGepa.png");
-        try { File.Copy(temporaryPath, target, true); } finally { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); }
+        _icons.ImportTrayIcon(source, Path.Combine(_paths.IconSetDirectory, "OpenGepa.ico"));
     }
 
     public string? GetAppIcon(LauncherTab tab, IEnumerable<LauncherTab> tabs)
