@@ -396,24 +396,41 @@ public sealed class SiteIconService
     private readonly IconService _icons;
     private static readonly HttpClient Client = new(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(5) };
     public SiteIconService(IconService icons) => _icons = icons;
-    public async Task<string?> TryFetchAsync(string url, string name)
+    public async Task<SiteIconFetchResult> TryFetchAsync(string url, string name)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return null;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return SiteIconFetchResult.Failed("HTTPまたはHTTPSのURLではありません。");
         try
         {
             var iconUri = new Uri(uri.GetLeftPart(UriPartial.Authority) + "/favicon.ico");
             using var response = await Client.GetAsync(iconUri, HttpCompletionOption.ResponseHeadersRead);
-            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > 1_048_576) return null;
+            var requested = response.RequestMessage?.RequestUri ?? iconUri;
+            if (!response.IsSuccessStatusCode) return SiteIconFetchResult.Failed($"取得先: {requested}\nHTTP: {(int)response.StatusCode} {response.ReasonPhrase}");
+            if (response.Content.Headers.ContentLength is > 1_048_576) return SiteIconFetchResult.Failed($"取得先: {requested}\nContent-Type: {response.Content.Headers.ContentType}\nContent-Length: {response.Content.Headers.ContentLength} bytes\n上限の1,048,576 bytesを超えています。");
             await using var stream = await response.Content.ReadAsStreamAsync();
             await using var limited = new MemoryStream(); var buffer = new byte[81920]; var total = 0;
             while (true)
             {
                 var read = await stream.ReadAsync(buffer); if (read == 0) break;
-                total += read; if (total > 1_048_576) return null;
+                total += read; if (total > 1_048_576) return SiteIconFetchResult.Failed($"取得先: {requested}\nContent-Type: {response.Content.Headers.ContentType}\n受信サイズが上限の1,048,576 bytesを超えました。");
                 await limited.WriteAsync(buffer.AsMemory(0, read));
             }
-            limited.Position = 0; return _icons.ImportImage(limited, name);
+            try
+            {
+                limited.Position = 0; return SiteIconFetchResult.Succeeded(_icons.ImportImage(limited, name));
+            }
+            catch (Exception ex)
+            {
+                return SiteIconFetchResult.Failed($"取得先: {requested}\nContent-Type: {response.Content.Headers.ContentType}\n受信サイズ: {total} bytes\n画像変換: {DescribeException(ex)}");
+            }
         }
-        catch { return null; }
+        catch (Exception ex) { return SiteIconFetchResult.Failed(DescribeException(ex)); }
     }
+    private static string DescribeException(Exception exception) => exception.InnerException is null ? $"{exception.GetType().Name}: {exception.Message}" : $"{exception.GetType().Name}: {exception.Message}\n内部例外: {DescribeException(exception.InnerException)}";
+}
+
+public sealed record SiteIconFetchResult(string? IconPath, string? Error)
+{
+    public bool IsSuccess => IconPath is not null;
+    public static SiteIconFetchResult Succeeded(string iconPath) => new(iconPath, null);
+    public static SiteIconFetchResult Failed(string error) => new(null, error);
 }

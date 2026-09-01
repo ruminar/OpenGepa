@@ -164,8 +164,9 @@ public partial class MainWindow : Window
     private void RetryNodeIcon(FileItem node) { var icon = _app.IconService.TryExtract(node.Target, node.Name); if (icon is null) { ShowDialog(() => MessageBox.Show("対象ファイルからアイコンを取得できませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning)); return; } SetNodeIcon(node.Id, icon); }
     private async Task FetchUrlIcon(UrlItem node, string tabId)
     {
-        var icon = await _app.SiteIconService.TryFetchAsync(node.Target, node.Name); if (icon is null) return;
-        Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, node.Id); if (found is not null) found.Icon = icon; });
+        var result = await _app.SiteIconService.TryFetchAsync(node.Target, node.Name);
+        if (!result.IsSuccess) { ShowDialog(() => MessageBox.Show($"サイトのアイコンを取得できませんでした。\n\n対象: {node.Target}\n\n{result.Error}", "OpenGepa - 診断", MessageBoxButton.OK, MessageBoxImage.Warning)); return; }
+        Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, node.Id); if (found is not null) found.Icon = result.IconPath; });
     }
     private void SetNodeIcon(string id, string? icon) => Commit(data => FindNode(data.Tabs.First(t => t.Id == SelectedTabId).Children, id)!.Icon = icon);
     private void OpenProperties(FileItem node) { if (!_app.LaunchService.OpenProperties(new WindowInteropHelper(this).Handle, node.Target)) ShowDialog(() => MessageBox.Show("Windowsのプロパティを開けませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
