@@ -63,8 +63,14 @@ public partial class MainWindow : Window
     private void TabsList_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (!_refreshing && TabsList.SelectedItem is LauncherTab tab) _app.SelectTab(tab.Id); }
     private async void LauncherTree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        var item = FindAncestor<TreeViewItem>((DependencyObject)e.OriginalSource); if (item?.DataContext is GroupNode) { if (FindAncestor<System.Windows.Controls.Primitives.ToggleButton>((DependencyObject)e.OriginalSource) is null) item.IsExpanded = !item.IsExpanded; e.Handled = true; return; }
-        if (item?.DataContext is LauncherNode launcher && (launcher is FileItem or DirectoryItem or UrlItem) && e.ClickCount == _app.Data.ItemLaunch.GetClickCount(launcher)) { e.Handled = true; await Launch(launcher); }
+        var hit = LauncherTree.InputHitTest(e.GetPosition(LauncherTree)) as DependencyObject; var item = FindAncestor<TreeViewItem>(hit);
+        if (item?.DataContext is GroupNode && e.ClickCount == 1) { if (FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(hit) is null) item.IsExpanded = !item.IsExpanded; e.Handled = true; return; }
+        if (item?.DataContext is LauncherNode launcher && (launcher is FileItem or DirectoryItem or UrlItem) && _app.Data.ItemLaunch.GetClickCount(launcher) == 1) { e.Handled = true; await Launch(launcher); }
+    }
+    private async void LauncherTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var hit = LauncherTree.InputHitTest(e.GetPosition(LauncherTree)) as DependencyObject; var item = FindAncestor<TreeViewItem>(hit);
+        if (item?.DataContext is LauncherNode launcher && (launcher is FileItem or DirectoryItem or UrlItem) && _app.Data.ItemLaunch.GetClickCount(launcher) == 2) { e.Handled = true; await Launch(launcher); }
     }
     private async void LauncherTree_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
@@ -78,7 +84,7 @@ public partial class MainWindow : Window
 
     private void LauncherTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var node = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject)?.DataContext as LauncherNode; var menu = new ContextMenu();
+        var hit = LauncherTree.InputHitTest(e.GetPosition(LauncherTree)) as DependencyObject; var node = FindAncestor<TreeViewItem>(hit)?.DataContext as LauncherNode; var menu = new ContextMenu();
         if (node is null) { menu.Items.Add(Menu("すべて折りたたむ", CollapseAll)); menu.Items.Add(new Separator()); AddCreationItems(menu, null); } else { var actual = FindNode(_app.SelectedTab?.Children, node.Id); if (actual is null) return; AddNodeMenu(menu, actual); }
         LauncherTree.ContextMenu = menu; menu.IsOpen = true; e.Handled = true;
     }

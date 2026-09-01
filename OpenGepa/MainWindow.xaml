@@ -36,7 +36,7 @@
         <Border Grid.Row="1" Margin="10" Background="{DynamicResource PanelBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
             <Grid>
         <TreeView x:Name="LauncherTree" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource ItemForegroundBrush}" Padding="8" ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                          PreviewMouseLeftButtonUp="LauncherTree_PreviewMouseLeftButtonUp" KeyDown="LauncherTree_KeyDown" PreviewMouseRightButtonDown="LauncherTree_PreviewMouseRightButtonDown"/>
+                          PreviewMouseLeftButtonUp="LauncherTree_PreviewMouseLeftButtonUp" MouseDoubleClick="LauncherTree_MouseDoubleClick" KeyDown="LauncherTree_KeyDown" PreviewMouseRightButtonDown="LauncherTree_PreviewMouseRightButtonDown"/>
                 <TextBlock x:Name="EmptyText" Text="表示されているランチャーがありません。&#x0a;トレイの［設定］から表示してください。"
                            HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource MutedForegroundBrush}" Visibility="Collapsed"/>
             </Grid>
