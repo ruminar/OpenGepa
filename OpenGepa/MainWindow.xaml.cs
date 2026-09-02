@@ -15,6 +15,8 @@ public partial class MainWindow : Window
 {
     private readonly AppService _app;
     private bool _refreshing, _launching, _dialogOpen, _settingSearch;
+    private TreeViewItem? _pressedTreeItem;
+    private bool _pressedTreeExpander;
     private readonly Dictionary<string, HashSet<string>> _expandedByTab = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _searchByTab = new(StringComparer.OrdinalIgnoreCase);
     private string? _renderedTabId;
@@ -82,11 +84,20 @@ public partial class MainWindow : Window
     private static bool Contains(string value, string text) => NameRules.Normalize(value).Contains(text, StringComparison.OrdinalIgnoreCase);
 
     private void TabsList_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (!_refreshing && TabsList.SelectedItem is LauncherTab tab) _app.SelectTab(tab.Id); }
+    private void LauncherTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var source = e.OriginalSource as DependencyObject;
+        _pressedTreeItem = FindAncestor<TreeViewItem>(source);
+        _pressedTreeExpander = FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(source) is not null;
+    }
     private async void LauncherTree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        var hit = LauncherTree.InputHitTest(e.GetPosition(LauncherTree)) as DependencyObject; var item = FindAncestor<TreeViewItem>(hit);
-        if (item?.DataContext is GroupNode && e.ClickCount == 1) { if (FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(hit) is null) item.IsExpanded = !item.IsExpanded; e.Handled = true; return; }
-        if (item?.DataContext is LauncherNode launcher && (launcher is FileItem or DirectoryItem or UrlItem) && _app.Data.ItemLaunch.GetClickCount(launcher) == 1) { e.Handled = true; await Launch(launcher); }
+        var pressedItem = _pressedTreeItem; var pressedExpander = _pressedTreeExpander;
+        _pressedTreeItem = null; _pressedTreeExpander = false;
+        var releasedItem = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
+        if (pressedItem is null || pressedExpander || !ReferenceEquals(pressedItem, releasedItem)) return;
+        if (pressedItem.DataContext is GroupNode && e.ClickCount == 1) { pressedItem.IsExpanded = !pressedItem.IsExpanded; e.Handled = true; return; }
+        if (pressedItem.DataContext is LauncherNode launcher && (launcher is FileItem or DirectoryItem or UrlItem) && _app.Data.ItemLaunch.GetClickCount(launcher) == 1) { e.Handled = true; await Launch(launcher); }
     }
     private async void LauncherTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
