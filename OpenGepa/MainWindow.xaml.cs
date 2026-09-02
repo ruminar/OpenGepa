@@ -62,7 +62,7 @@ public partial class MainWindow : Window
     {
         var tab = _app.SelectedTab; if (tab is null) { LauncherTree.ItemsSource = null; return; } var search = NameRules.Normalize(SearchText.Text);
         if (search.Length == 0) { LauncherTree.ItemsSource = tab.Children; var expanded = _expandedByTab.TryGetValue(tab.Id, out var saved) ? saved : new HashSet<string>(StringComparer.OrdinalIgnoreCase); Dispatcher.BeginInvoke(() => RestoreExpanded(expanded)); return; }
-        if (captureState) CaptureExpanded(tab.Id); LauncherTree.ItemsSource = Filter(tab.Children, search); Dispatcher.BeginInvoke(ExpandAll);
+        if (captureState) CaptureExpanded(tab.Id); LauncherTree.ItemsSource = Filter(tab.Children, search); Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(ExpandAll));
     }
     private static ObservableCollection<LauncherNode> Filter(IEnumerable<LauncherNode> nodes, string text)
     {
@@ -232,7 +232,21 @@ public partial class MainWindow : Window
     private void Commit(Action<OpenGepaData> change) { if (!_app.TryCommit(change, out var error)) ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
     private T ShowDialog<T>(Func<T> show) { _dialogOpen = true; try { return show(); } finally { _dialogOpen = false; } }
     private void CaptureExpanded(string? tabId) { if (tabId is not null) _expandedByTab[tabId] = EnumerateContainers(LauncherTree).Where(x => x.IsExpanded && x.DataContext is GroupNode).Select(x => ((GroupNode)x.DataContext).Id).ToHashSet(StringComparer.OrdinalIgnoreCase); }
-    private void ExpandAll() { foreach (var item in EnumerateContainers(LauncherTree)) if (item.DataContext is GroupNode) item.IsExpanded = true; }
+    private void ExpandAll()
+    {
+        ExpandAll(LauncherTree);
+    }
+    private static void ExpandAll(ItemsControl parent)
+    {
+        parent.UpdateLayout();
+        foreach (var value in parent.Items)
+        {
+            if (parent.ItemContainerGenerator.ContainerFromItem(value) is not TreeViewItem item || item.DataContext is not GroupNode) continue;
+            item.IsExpanded = true;
+            item.UpdateLayout();
+            ExpandAll(item);
+        }
+    }
     private void RestoreExpanded(IReadOnlySet<string> ids) { foreach (var item in EnumerateContainers(LauncherTree)) if (item.DataContext is GroupNode group) item.IsExpanded = ids.Contains(group.Id); }
     private static IEnumerable<TreeViewItem> EnumerateContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; foreach (var child in EnumerateContainers(item)) yield return child; } }
     private static IEnumerable<TreeViewItem> EnumerateVisibleContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; if (item.IsExpanded) foreach (var child in EnumerateVisibleContainers(item)) yield return child; } }
