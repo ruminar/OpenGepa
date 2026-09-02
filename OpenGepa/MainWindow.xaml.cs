@@ -19,7 +19,8 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, string> _searchByTab = new(StringComparer.OrdinalIgnoreCase);
     private string? _renderedTabId;
     public MainWindow(AppService app) { InitializeComponent(); _app = app; _app.DataChanged += (_, _) => Dispatcher.BeginInvoke(RefreshData); }
-    protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { e.Cancel = true; Hide(); }
+    private void Window_SourceInitialized(object? sender, EventArgs e) => ThemePalette.Apply(_app.Data.Appearance);
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { if (!App.IsExiting) { e.Cancel = true; Hide(); } }
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
 
     public void RefreshData()

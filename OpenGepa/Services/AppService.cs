@@ -403,7 +403,7 @@ public sealed class SiteIconService
 {
     private readonly IconService _icons;
     private static readonly HttpClient Client = CreateClient();
-    private static HttpClient CreateClient() { var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(5) }; client.DefaultRequestHeaders.UserAgent.ParseAdd("OpenGepa/0.1"); return client; }
+    private static HttpClient CreateClient() { var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(5) }; client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36 OpenGepa/0.1"); return client; }
     public SiteIconService(IconService icons) => _icons = icons;
     public async Task<SiteIconFetchResult> TryFetchAsync(string url, string name)
     {

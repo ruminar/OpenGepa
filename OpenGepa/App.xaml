@@ -27,6 +27,10 @@
         <Style TargetType="{x:Type ListBox}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource ItemForegroundBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/></Style>
         <Style TargetType="{x:Type ContextMenu}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource ItemForegroundBrush}"/></Style>
         <Style TargetType="{x:Type MenuItem}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource ItemForegroundBrush}"/></Style>
+        <SolidColorBrush x:Key="{x:Static SystemColors.MenuBrushKey}" Color="#FF202631"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.MenuTextBrushKey}" Color="#FFE5E7EB"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#FF202631"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#FFE5E7EB"/>
         <Style TargetType="{x:Type ScrollViewer}"><Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/></Style>
     </Application.Resources>
 </Application>
