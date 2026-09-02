@@ -406,7 +406,8 @@ public sealed class SiteIconService
         try
         {
             var iconUri = await TryFindPageIconAsync(uri) ?? new Uri(uri.GetLeftPart(UriPartial.Authority) + "/favicon.ico");
-            using var response = await Client.GetAsync(iconUri, HttpCompletionOption.ResponseHeadersRead);
+            using var request = new HttpRequestMessage(HttpMethod.Get, iconUri); request.Headers.Referrer = uri;
+            using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             var requested = response.RequestMessage?.RequestUri ?? iconUri;
             if (!response.IsSuccessStatusCode) return SiteIconFetchResult.Failed($"取得先: {requested}\nHTTP: {(int)response.StatusCode} {response.ReasonPhrase}");
             if (response.Content.Headers.ContentLength is > 1_048_576) return SiteIconFetchResult.Failed($"取得先: {requested}\nContent-Type: {response.Content.Headers.ContentType}\nContent-Length: {response.Content.Headers.ContentLength} bytes\n上限の1,048,576 bytesを超えています。");
