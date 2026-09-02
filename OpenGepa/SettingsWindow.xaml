@@ -1,4 +1,4 @@
-<Window x:Class="OpenGepa.SettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="OpenGepa - 設定" Width="600" Height="900" StateChanged="Window_StateChanged">
+<Window x:Class="OpenGepa.SettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="OpenGepa - 設定" Width="600" Height="900" StateChanged="Window_StateChanged" Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}">
     <DockPanel Margin="16" Background="{DynamicResource AppBackgroundBrush}">
         <CheckBox x:Name="StartupCheck" DockPanel.Dock="Top" Content="Windows起動時にOpenGepaを起動する" Margin="0,0,0,16" Checked="StartupCheck_Changed" Unchecked="StartupCheck_Changed" Foreground="{DynamicResource ItemForegroundBrush}"/>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel>

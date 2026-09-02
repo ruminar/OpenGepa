@@ -85,7 +85,7 @@ public partial class EditorWindow : Window
     private async Task TryAddUrlIcon(string id, string target, string name, string tabId)
     {
         var result = await _app.SiteIconService.TryFetchAsync(target, name);
-        if (!result.IsSuccess) { MessageBox.Show("サイトのアイコンを取得できませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        if (!result.IsSuccess) { new DiagnosticDialog("OpenGepa - URLアイコン診断", $"サイトのアイコンを取得できませんでした。\n対象: {target}", result.Error ?? "詳細はありません。") { Owner = this }.ShowDialog(); return; }
         Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, id); if (found is not null) found.Icon = result.IconPath; }, tabId);
     }
     private async void FetchPageTitle()

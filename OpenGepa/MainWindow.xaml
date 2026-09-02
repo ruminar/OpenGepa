@@ -5,10 +5,11 @@
         xmlns:models="clr-namespace:OpenGepa.Models"
         Title="OpenGepa" Width="480" Height="600" ResizeMode="NoResize"
         WindowStyle="SingleBorderWindow" ShowInTaskbar="False" Topmost="True"
+        Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}"
         Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown" PreviewTextInput="Window_PreviewTextInput" StateChanged="Window_StateChanged" SourceInitialized="Window_SourceInitialized">
     <Window.Resources>
         <local:TreeRowWidthConverter x:Key="TreeRowWidthConverter"/>
-        <Style x:Key="PinToggleStyle" TargetType="ToggleButton"><Setter Property="Background" Value="{DynamicResource TabBackgroundBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Foreground" Value="{DynamicResource TabForegroundBrush}"/><Setter Property="FontWeight" Value="Normal"/><Style.Triggers><Trigger Property="IsChecked" Value="True"><Setter Property="Background" Value="#FF0B3D70"/><Setter Property="BorderBrush" Value="#FF062E57"/><Setter Property="BorderThickness" Value="2"/><Setter Property="FontWeight" Value="Bold"/></Trigger></Style.Triggers></Style>
+        <Style x:Key="PinToggleStyle" TargetType="ToggleButton"><Setter Property="Background" Value="{DynamicResource TabBackgroundBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Foreground" Value="{DynamicResource TabForegroundBrush}"/><Setter Property="FontWeight" Value="Normal"/><Style.Triggers><Trigger Property="IsChecked" Value="True"><Setter Property="Background" Value="{DynamicResource PinCheckedBackgroundBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource PinCheckedBorderBrush}"/><Setter Property="Foreground" Value="{DynamicResource PinCheckedForegroundBrush}"/><Setter Property="BorderThickness" Value="2"/><Setter Property="FontWeight" Value="Bold"/></Trigger></Style.Triggers></Style>
         <Style x:Key="NodeSelectionBorder" TargetType="Border"><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Style.Triggers><DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType={x:Type TreeViewItem}}, Path=IsSelected}" Value="True"><Setter Property="BorderBrush" Value="#FF1976D2"/><Setter Property="BorderThickness" Value="2"/></DataTrigger></Style.Triggers></Style>
         <Style TargetType="TreeViewItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -50,7 +51,7 @@
                     <Grid Width="76" Height="76" HorizontalAlignment="Left" SnapsToDevicePixels="True" UseLayoutRounding="True">
                         <TextBlock Text="▣" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TabForegroundBrush}"/>
                         <Image Source="{Binding ., Converter={StaticResource TabIconConverter}, ConverterParameter=152}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True"/>
-                        <Border VerticalAlignment="Bottom" Background="#B3FFFFFF" Padding="2,3"><TextBlock Text="{Binding Name}" TextAlignment="Left" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TabForegroundBrush}"/></Border>
+                        <Border VerticalAlignment="Bottom" Background="{DynamicResource TabOverlayBackgroundBrush}" Padding="2,3"><TextBlock Text="{Binding Name}" TextAlignment="Left" TextWrapping="Wrap" FontSize="12" Foreground="White"/></Border>
                     </Grid>
                 </Border>
             </DataTemplate></ListBox.ItemTemplate>

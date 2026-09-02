@@ -6,7 +6,30 @@ using OpenGepa.Services;
 
 namespace OpenGepa;
 
-public sealed class TextPromptDialog : Window
+public abstract class ThemedDialogWindow : Window
+{
+    protected ThemedDialogWindow()
+    {
+        SetResourceReference(BackgroundProperty, "AppBackgroundBrush");
+        SetResourceReference(ForegroundProperty, "ItemForegroundBrush");
+    }
+}
+
+public sealed class DiagnosticDialog : ThemedDialogWindow
+{
+    public DiagnosticDialog(string title, string summary, string details)
+    {
+        Title = title; Width = 760; Height = 600; MinWidth = 560; MinHeight = 360; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        var detailText = new System.Windows.Controls.TextBox { Text = details, IsReadOnly = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new System.Windows.Media.FontFamily("Consolas"), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var copy = new Button { Content = "詳細をコピー", Width = 110 }; copy.Click += (_, _) => System.Windows.Clipboard.SetText(details);
+        var close = new Button { Content = "閉じる", Width = 90, Margin = new Thickness(8, 0, 0, 0), IsDefault = true, IsCancel = true };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) }; buttons.Children.Add(copy); buttons.Children.Add(close);
+        var grid = new Grid { Margin = new Thickness(16) }; grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.Children.Add(new TextBlock { Text = summary, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10) }); Grid.SetRow(detailText, 1); grid.Children.Add(detailText); Grid.SetRow(buttons, 2); grid.Children.Add(buttons); Content = grid;
+    }
+}
+
+public sealed class TextPromptDialog : ThemedDialogWindow
 {
     private readonly System.Windows.Controls.TextBox _text = new();
     public string Value => _text.Text;
@@ -22,7 +45,7 @@ public sealed class TextPromptDialog : Window
     }
 }
 
-public sealed class ItemDialog : Window
+public sealed class ItemDialog : ThemedDialogWindow
 {
     private readonly System.Windows.Controls.TextBox _name = new(); private readonly System.Windows.Controls.TextBox _target = new(); private readonly System.Windows.Controls.ComboBox? _destination;
     public string ItemName => _name.Text; public string Target => _target.Text; public string? DestinationId => (_destination?.SelectedItem as DestinationOption)?.GroupId;
@@ -127,7 +150,7 @@ public static class DirectoryScanRootRules
     }
 }
 
-public sealed class OperationProgressDialog : Window
+public sealed class OperationProgressDialog : ThemedDialogWindow
 {
     private readonly CancellationTokenSource _cancellation = new();
     private readonly TextBlock _status = new();
@@ -151,7 +174,7 @@ public sealed class OperationProgressDialog : Window
     public void Complete() { _completed = true; if (IsVisible) Close(); }
 }
 
-public sealed class ScanPreviewDialog : Window
+public sealed class ScanPreviewDialog : ThemedDialogWindow
 {
     private readonly System.Windows.Controls.DataGrid _grid = new();
     public IReadOnlyList<ScanCandidate> Selected => ((ObservableCollection<ScanCandidate>)_grid.ItemsSource).Where(x => x.IsSelected).ToList();

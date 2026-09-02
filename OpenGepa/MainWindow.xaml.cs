@@ -166,7 +166,7 @@ public partial class MainWindow : Window
     private async Task FetchUrlIcon(UrlItem node, string tabId)
     {
         var result = await _app.SiteIconService.TryFetchAsync(node.Target, node.Name);
-        if (!result.IsSuccess) { ShowDialog(() => MessageBox.Show("サイトのアイコンを取得できませんでした。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning)); return; }
+        if (!result.IsSuccess) { var dialog = new DiagnosticDialog("OpenGepa - URLアイコン診断", $"サイトのアイコンを取得できませんでした。\n対象: {node.Target}", result.Error ?? "詳細はありません。") { Owner = this }; ShowDialog(dialog.ShowDialog); return; }
         Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, node.Id); if (found is not null) found.Icon = result.IconPath; });
     }
     private async Task FetchPageTitle(UrlItem node, string tabId)

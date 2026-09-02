@@ -36,6 +36,8 @@ public partial class App : System.Windows.Application
         {
             Services = AppService.Create();
             Services.Initialize();
+            EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
+                new RoutedEventHandler((sender, _) => ThemePalette.ApplyWindowChrome((Window)sender, Services.Data.Appearance)));
             Services.PrepareLauncher();
             RegisterShowHotKey();
             _showRegistration = ThreadPool.RegisterWaitForSingleObject(

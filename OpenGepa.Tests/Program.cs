@@ -29,6 +29,7 @@ var tests = new (string Name, Action Run)[]
     ("Tree range selection", TestTreeRangeSelection),
     ("Browser URL drop text", TestBrowserUrlDropText),
     ("URL registration names", TestUrlRegistrationNames),
+    ("Site icon HTML candidates", TestSiteIconHtmlCandidates),
 };
 
 var failed = 0;
@@ -331,6 +332,20 @@ static void TestUrlRegistrationNames()
     var nodes = new[] { new UrlItem { Name = "example.com" } }; var uri = new Uri("https://example.com/docs?a=1");
     Equal("example.com/docs", UrlRegistrationRules.UniqueDroppedName(uri, nodes));
     Equal("Title_2", UrlRegistrationRules.UniqueName("Title", new LauncherNode[] { new UrlItem { Name = "Title" }, new UrlItem { Name = "Title_1" } }));
+}
+static void TestSiteIconHtmlCandidates()
+{
+    const string html = """
+        <html><head>
+        <base href="https://www.amiami.jp/">
+        <link rel="icon" sizes="32x32" href="https://www.amiami.jp/images/favicon.png">
+        <link href='/images/apple-touch-icon.png' rel='shortcut icon'>
+        </head></html>
+        """;
+    var candidates = SiteIconService.ExtractIconCandidates(html, new Uri("https://www.amiami.jp/top/page/c/ranking.html"));
+    Equal(2, candidates.Count);
+    Equal("https://www.amiami.jp/images/favicon.png", candidates[0].AbsoluteUri);
+    Equal("https://www.amiami.jp/images/apple-touch-icon.png", candidates[1].AbsoluteUri);
 }
 
 static void WritePng(string path, System.Drawing.Color color)

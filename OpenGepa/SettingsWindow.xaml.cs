@@ -9,7 +9,7 @@ public partial class SettingsWindow : Window
 {
     private readonly AppService _app; private bool _refreshing;
     public SettingsWindow(AppService app) { InitializeComponent(); _app = app; }
-    protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { e.Cancel = true; Hide(); }
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { if (!App.IsExiting) { e.Cancel = true; Hide(); } }
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
     public void RefreshData(string? selectedTabId = null, bool restoreFocus = false)
     {
