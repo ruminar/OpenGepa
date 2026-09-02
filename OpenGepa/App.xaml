@@ -31,7 +31,8 @@
         <SolidColorBrush x:Key="ScrollTrackBrush" Color="#FFF7F8FA" />
         <SolidColorBrush x:Key="ScrollThumbBrush" Color="#FFB8C0CC" />
         <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#FF8B96A6" />
-        <SolidColorBrush x:Key="TabOverlayBackgroundBrush" Color="#B3000000" />
+        <SolidColorBrush x:Key="TabOverlayBackgroundBrush" Color="#B3FFFFFF" />
+        <SolidColorBrush x:Key="TabOverlayForegroundBrush" Color="#FF101828" />
         <SolidColorBrush x:Key="PinHoverBackgroundBrush" Color="#FFD8E2F0" />
         <SolidColorBrush x:Key="PinCheckedBackgroundBrush" Color="#FF0B3D70" />
         <SolidColorBrush x:Key="PinCheckedHoverBackgroundBrush" Color="#FF092F57" />

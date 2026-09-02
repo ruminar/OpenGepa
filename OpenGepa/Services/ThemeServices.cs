@@ -17,7 +17,7 @@ public sealed record ThemeColors(
     string DisabledBackground, string DisabledForeground,
     string HoverBackground, string PressedBackground,
     string ScrollTrack, string ScrollThumb, string ScrollThumbHover,
-    string TabOverlayBackground,
+    string TabOverlayBackground, string TabOverlayForeground,
     string PinHoverBackground, string PinCheckedBackground, string PinCheckedHoverBackground, string PinCheckedBorder, string PinCheckedForeground);
 
 public static class AppearanceRules
@@ -47,13 +47,13 @@ public static class ThemePalette
         "#F7F8FA", "#FFFFFF", "#D9DDE5", "#E7ECF5", "#101828",
         "#F1F5F9", "#101828", "#FFFFFF", "#101828", "#CCE5FF", "#101828", "#667085",
         "#FFFFFF", "#101828", "#EEF0F3", "#8A93A3", "#E7ECF5", "#D8E2F0",
-        "#FFF7F8FA", "#FFB8C0CC", "#FF8B96A6", "#B3000000",
+        "#FFF7F8FA", "#FFB8C0CC", "#FF8B96A6", "#B3FFFFFF", "#FF101828",
         "#FFD8E2F0", "#FF0B3D70", "#FF092F57", "#FF062E57", "#FFFFFFFF");
     private static readonly ThemeColors Dark = new(
         "#171A1F", "#202631", "#3B4658", "#2B3440", "#F8FAFC",
         "#2B3440", "#F8FAFC", "#202631", "#E5E7EB", "#365A7A", "#FFFFFF", "#AAB4C4",
         "#252C37", "#F3F4F6", "#1B2028", "#7F8998", "#344050", "#17202B",
-        "#FF171C24", "#FF566273", "#FF748297", "#B3000000",
+        "#FF171C24", "#FF566273", "#FF748297", "#B3000000", "#FFFFFFFF",
         "#FF182737", "#FF062A4C", "#FF073962", "#FF45A2E8", "#FFFFFFFF");
     public static ThemeColors Resolve(AppearanceSettings appearance)
     {
@@ -72,7 +72,7 @@ public static class ThemePalette
         resources["DisabledBackgroundBrush"] = Brush(colors.DisabledBackground); resources["DisabledForegroundBrush"] = Brush(colors.DisabledForeground);
         resources["HoverBackgroundBrush"] = Brush(colors.HoverBackground); resources["PressedBackgroundBrush"] = Brush(colors.PressedBackground);
         resources["ScrollTrackBrush"] = Brush(colors.ScrollTrack); resources["ScrollThumbBrush"] = Brush(colors.ScrollThumb); resources["ScrollThumbHoverBrush"] = Brush(colors.ScrollThumbHover);
-        resources["TabOverlayBackgroundBrush"] = Brush(colors.TabOverlayBackground);
+        resources["TabOverlayBackgroundBrush"] = Brush(colors.TabOverlayBackground); resources["TabOverlayForegroundBrush"] = Brush(colors.TabOverlayForeground);
         resources["PinHoverBackgroundBrush"] = Brush(colors.PinHoverBackground); resources["PinCheckedBackgroundBrush"] = Brush(colors.PinCheckedBackground); resources["PinCheckedHoverBackgroundBrush"] = Brush(colors.PinCheckedHoverBackground); resources["PinCheckedBorderBrush"] = Brush(colors.PinCheckedBorder); resources["PinCheckedForegroundBrush"] = Brush(colors.PinCheckedForeground);
         foreach (Window window in System.Windows.Application.Current.Windows) ApplyWindowChrome(window, appearance);
     }

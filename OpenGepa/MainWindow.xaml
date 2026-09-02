@@ -51,7 +51,7 @@
                     <Grid Width="76" Height="76" HorizontalAlignment="Left" SnapsToDevicePixels="True" UseLayoutRounding="True">
                         <TextBlock Text="▣" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TabForegroundBrush}"/>
                         <Image Source="{Binding ., Converter={StaticResource TabIconConverter}, ConverterParameter=152}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True"/>
-                        <Border VerticalAlignment="Bottom" Background="{DynamicResource TabOverlayBackgroundBrush}" Padding="2,3"><TextBlock Text="{Binding Name}" TextAlignment="Left" TextWrapping="Wrap" FontSize="12" Foreground="White"/></Border>
+                        <Border VerticalAlignment="Bottom" Background="{DynamicResource TabOverlayBackgroundBrush}" Padding="2,3"><TextBlock Text="{Binding Name}" TextAlignment="Left" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TabOverlayForegroundBrush}"/></Border>
                     </Grid>
                 </Border>
             </DataTemplate></ListBox.ItemTemplate>
