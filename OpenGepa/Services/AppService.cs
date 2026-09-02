@@ -88,8 +88,13 @@ public sealed class AppService
 
     public void ShowLauncher()
     {
-        if (_launcher is { IsVisible: true }) { _launcher.Hide(); return; }
-        PrepareLauncher(); _launcher!.PositionNearCursor(); _launcher.Show(); _launcher.Activate();
+        PrepareLauncher();
+        if (_launcher!.IsVisible)
+        {
+            if (Data.IsLauncherPinned && !_launcher.IsActive) { if (_launcher.WindowState == WindowState.Minimized) _launcher.WindowState = WindowState.Normal; _launcher.Activate(); return; }
+            _launcher.Hide(); return;
+        }
+        _launcher.PositionNearCursor(); _launcher.Show(); _launcher.Activate();
     }
 
     public void HideLauncher() => _launcher?.Hide();
