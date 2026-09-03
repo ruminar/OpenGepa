@@ -8,6 +8,7 @@ namespace OpenGepa.Services;
 public sealed class BookmarkIconQueue
 {
     private const int MaxEmbeddedBytes = 1_048_576;
+    private const int ResultBatchSize = 200;
     private readonly IconService _icons;
     private readonly SiteIconService _sites;
     private readonly Action<IReadOnlyList<BookmarkIconResult>> _completed;
@@ -36,7 +37,7 @@ public sealed class BookmarkIconQueue
                 var icon = TryImportEmbedded(job.EmbeddedIcon, job.Name);
                 if (icon is null && batch.WebRemaining-- > 0) icon = (await _sites.TryFetchBookmarkIconAsync(job.Url, job.IconUri, job.Name)).IconPath;
                 if (icon is not null) pending.AddRange(job.ItemIds.Select(id => new BookmarkIconResult(job.TabId, id, icon)));
-                if (pending.Count >= 5) { _completed(pending); pending = []; }
+                if (pending.Count >= ResultBatchSize) { _completed(pending); pending = []; }
             }
             if (pending.Count > 0) _completed(pending);
         }
