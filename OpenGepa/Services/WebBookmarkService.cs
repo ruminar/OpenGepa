@@ -25,9 +25,9 @@ public sealed class WebBookmarkService
         var parsed = Parse(html);
         var imported = parsed.Nodes;
         PruneEmptyGroups(imported);
-        if (imported.Count == 0) return new BookmarkImportResult(null, parsed.Skipped);
+        if (imported.Count == 0) return new BookmarkImportResult(null, parsed.Skipped, []);
         var rootName = UniqueName(existingTopLevel, DateTime.Now.ToString("yyyyMMdd_HHmmss"));
-        return new BookmarkImportResult(new GroupNode { Name = rootName, Children = imported }, parsed.Skipped);
+        return new BookmarkImportResult(new GroupNode { Name = rootName, Children = imported }, parsed.Skipped, parsed.IconCandidates);
     }
 
     public void Export(string path, LauncherTab tab)
@@ -47,6 +47,7 @@ public sealed class WebBookmarkService
         if (!Regex.IsMatch(html, "<dl\\b", RegexOptions.IgnoreCase)) throw new InvalidDataException("ブックマークHTMLのDL構造が見つかりません。");
         var root = new ObservableCollection<LauncherNode>();
         var skipped = new List<SkippedBookmark>();
+        var iconCandidates = new List<BookmarkIconCandidate>();
         var stack = new List<ObservableCollection<LauncherNode>> { root };
         GroupNode? pendingGroup = null;
         var nodes = 0;
@@ -86,10 +87,12 @@ public sealed class WebBookmarkService
                 pendingGroup = null;
                 continue;
             }
-            stack[^1].Add(new UrlItem { Name = UniqueName(stack[^1], name), Target = uri.AbsoluteUri, Order = stack[^1].Count });
+            var item = new UrlItem { Name = UniqueName(stack[^1], name), Target = uri.AbsoluteUri, Order = stack[^1].Count };
+            stack[^1].Add(item);
+            iconCandidates.Add(new BookmarkIconCandidate(item.Id, item.Name, item.Target, ReadAttribute(token.Groups["attrs"].Value, "icon"), ReadAttribute(token.Groups["attrs"].Value, "icon_uri")));
             pendingGroup = null;
         }
-        return new ParsedBookmarks(root, skipped);
+        return new ParsedBookmarks(root, skipped, iconCandidates);
     }
 
     private static bool PruneEmptyGroups(ObservableCollection<LauncherNode> nodes)
@@ -149,8 +152,9 @@ public sealed class WebBookmarkService
 }
 
 public sealed record SkippedBookmark(string Name, string Url);
-internal sealed record ParsedBookmarks(ObservableCollection<LauncherNode> Nodes, IReadOnlyList<SkippedBookmark> Skipped);
-public sealed record BookmarkImportResult(GroupNode? Root, IReadOnlyList<SkippedBookmark> Skipped)
+public sealed record BookmarkIconCandidate(string ItemId, string Name, string Url, string? EmbeddedIcon, string? IconUri);
+internal sealed record ParsedBookmarks(ObservableCollection<LauncherNode> Nodes, IReadOnlyList<SkippedBookmark> Skipped, IReadOnlyList<BookmarkIconCandidate> IconCandidates);
+public sealed record BookmarkImportResult(GroupNode? Root, IReadOnlyList<SkippedBookmark> Skipped, IReadOnlyList<BookmarkIconCandidate> IconCandidates)
 {
     public int ImportedCount => Root is null ? 0 : CountUrls(Root.Children);
     private static int CountUrls(IEnumerable<LauncherNode> nodes) => nodes.Sum(node => node switch { UrlItem => 1, GroupNode group => CountUrls(group.Children), _ => 0 });

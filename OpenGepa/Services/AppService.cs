@@ -27,6 +27,7 @@ public sealed class AppService
         IconService = new IconService(paths);
         IconSetService = new IconSetService(paths, IconService);
         SiteIconService = new SiteIconService(IconService);
+        BookmarkIconQueue = new BookmarkIconQueue(IconService, SiteIconService, ApplyBookmarkIcons);
         WindowsMenuService = new WindowsMenuService(paths);
         StoreAppsService = new StoreAppsService();
         PresetService = new PresetService(StoreAppsService);
@@ -43,6 +44,7 @@ public sealed class AppService
     public IconService IconService { get; }
     public IconSetService IconSetService { get; }
     public SiteIconService SiteIconService { get; }
+    public BookmarkIconQueue BookmarkIconQueue { get; }
     public WindowsMenuService WindowsMenuService { get; }
     public StoreAppsService StoreAppsService { get; }
     public PresetService PresetService { get; }
@@ -132,6 +134,29 @@ public sealed class AppService
     private long NextPersistenceVersion() => ++_persistenceVersion;
 
     private void RequestDeferredSave() => DataSaveQueue.RequestDeferredSave(Store.Clone(Data), NextPersistenceVersion());
+
+    public void QueueBookmarkIcons(string tabId, IEnumerable<BookmarkIconCandidate> candidates) => BookmarkIconQueue.Enqueue(tabId, candidates);
+    public void QueueMissingGroupIcons(string tabId, string groupId)
+    {
+        var tab = Data.Tabs.FirstOrDefault(item => item.Id == tabId);
+        if (tab?.IsWebTab != true || FindNode(tab.Children, groupId) is not GroupNode group) return;
+        BookmarkIconQueue.EnqueueMissing(tabId, Walk(group.Children).OfType<UrlItem>());
+    }
+    private void ApplyBookmarkIcons(IReadOnlyList<BookmarkIconResult> results)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null) return;
+        dispatcher.BeginInvoke(() => TryCommit(data =>
+        {
+            foreach (var result in results)
+            {
+                var tab = data.Tabs.FirstOrDefault(item => item.Id == result.TabId);
+                if (tab is not null && FindNode(tab.Children, result.ItemId) is UrlItem { Icon: null } item) item.Icon = result.IconPath;
+            }
+        }, out _));
+    }
+    private static LauncherNode? FindNode(IEnumerable<LauncherNode> nodes, string id) { foreach (var node in nodes) { if (node.Id == id) return node; if (node is GroupNode group && FindNode(group.Children, id) is LauncherNode found) return found; } return null; }
+    private static IEnumerable<LauncherNode> Walk(IEnumerable<LauncherNode> nodes) { foreach (var node in nodes) { yield return node; if (node is GroupNode group) foreach (var child in Walk(group.Children)) yield return child; } }
 
     public void PrepareLauncher()
     {
@@ -539,6 +564,19 @@ public sealed class SiteIconService
             diagnostics.Add($"処理エラー: {DescribeException(ex)}");
             return SiteIconFetchResult.Failed(string.Join(Environment.NewLine, diagnostics));
         }
+    }
+    public async Task<SiteIconFetchResult> TryFetchBookmarkIconAsync(string pageUrl, string? iconUrl, string name)
+    {
+        if (string.IsNullOrWhiteSpace(iconUrl) || !Uri.TryCreate(iconUrl, UriKind.Absolute, out var icon) || (icon.Scheme != Uri.UriSchemeHttp && icon.Scheme != Uri.UriSchemeHttps)) return await TryFetchAsync(pageUrl, name);
+        try
+        {
+            using var response = await Client.GetAsync(icon, HttpCompletionOption.ResponseHeadersRead);
+            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > MaxIconBytes) return await TryFetchAsync(pageUrl, name);
+            var (content, overflow) = await ReadLimitedAsync(response.Content, MaxIconBytes);
+            if (overflow) return await TryFetchAsync(pageUrl, name);
+            using (content) { content.Position = 0; return SiteIconFetchResult.Succeeded(_icons.ImportImage(content, name)); }
+        }
+        catch { return await TryFetchAsync(pageUrl, name); }
     }
     public async Task<SiteTextFetchResult> TryFetchPageTitleAsync(string url)
     {

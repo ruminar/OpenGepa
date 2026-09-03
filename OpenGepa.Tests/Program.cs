@@ -433,9 +433,10 @@ static void TestBookmarkImport()
     try
     {
         var file = Path.Combine(root, "bookmarks.html");
-        File.WriteAllText(file, "<DL><p><DT><H3>ブックマーク バー</H3><DL><p><DT><A HREF=\"https://example.com\">Example</A><DT><A HREF=\"https://example.org\">Example</A></DL><p></DL><p>");
+        File.WriteAllText(file, "<DL><p><DT><H3>ブックマーク バー</H3><DL><p><DT><A HREF=\"https://example.com\" ICON=\"data:image/png;base64,AA==\">Example</A><DT><A HREF=\"https://example.org\">Example</A></DL><p></DL><p>");
         var result = new WebBookmarkService().Import(file, []); var imported = result.Root!; Equal(1, imported.Children.Count);
         var source = (GroupNode)imported.Children[0]; Equal("ブックマーク バー", source.Name); Equal("Example_1", ((UrlItem)source.Children[1]).Name);
+        Equal("data:image/png;base64,AA==", result.IconCandidates.Single(candidate => candidate.Url == "https://example.com/").EmbeddedIcon);
         var tab = new LauncherTab { Name = "Web", Kind = LauncherTabKinds.Web }; imported.Order = 0; tab.Children.Add(imported); new DataValidator().Validate(Data(tab));
         File.WriteAllText(file, "<DL><p><DT><A HREF=\"https://example.com\">good</A><DT><A HREF=\"place:sort=8\">bad</A></DL><p>");
         var skipped = new WebBookmarkService().Import(file, []); Equal(1, skipped.ImportedCount); Equal(1, skipped.Skipped.Count); Equal("place:sort=8", skipped.Skipped[0].Url);

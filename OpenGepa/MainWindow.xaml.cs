@@ -179,7 +179,7 @@ public partial class MainWindow : Window
     {
         var web = _app.SelectedTab?.IsWebTab == true;
         menu.Items.Add(Menu("すべて折りたたむ", CollapseAll)); menu.Items.Add(new Separator());
-        if (node is GroupNode) { AddCreationItems(menu, node.Id); menu.Items.Add(new Separator()); }
+        if (node is GroupNode) { AddCreationItems(menu, node.Id); if (web) menu.Items.Add(Menu("配下のサイトのアイコンを取得", () => _app.QueueMissingGroupIcons(SelectedTabId, node.Id))); menu.Items.Add(new Separator()); }
         if (node is not DirectoryItem) menu.Items.Add(Menu("名前をコピー", () => CopyText(DataValidator.NodeLabel(node))));
         if (node is FileItem or DirectoryItem) menu.Items.Add(Menu("パスをコピー", () => CopyText(((node is NamedLauncherItem named) ? named.Target : ((DirectoryItem)node).Target))));
         else if (node is UrlItem url) menu.Items.Add(Menu("URLをコピー", () => CopyText(url.Target)));
@@ -409,6 +409,7 @@ public partial class MainWindow : Window
                 var target = data.Tabs.First(value => value.Id == tab.Id);
                 result.Root.Order = target.Children.Count; target.Children.Add(result.Root);
             });
+            if (result.Root is not null) _app.QueueBookmarkIcons(tab.Id, result.IconCandidates);
             if (result.Skipped.Count == 0) { ShowDialog(() => MessageBox.Show($"{result.ImportedCount}件のブックマークを取り込みました。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Information)); return; }
             var detail = string.Join(Environment.NewLine, result.Skipped.Select(item => $"{item.Name}: {item.Url}"));
             var choice = ShowDialog(() => MessageBox.Show($"{result.ImportedCount}件のブックマークを取り込みました。\n{result.Skipped.Count}件はHTTP/HTTPS以外のURLのため取り込みませんでした。\n\nスキップしたURL一覧を表示しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Information));
