@@ -21,6 +21,7 @@ var tests = new (string Name, Action Run)[]
     ("File dialog filter", TestFileDialogFilter),
     ("Appearance settings", TestAppearanceSettings),
     ("Item launch click defaults", TestItemLaunchClickDefaults),
+    ("Modified clicks do not launch items", TestModifiedClickRules),
     ("Launcher tab duplication", TestLauncherTabDuplication),
     ("Cross-launcher move", TestCrossLauncherMove),
     ("Small icon size is preserved", TestSmallIconSizeIsPreserved),
@@ -365,6 +366,14 @@ static void TestSiteIconHtmlCandidates()
     Equal(2, candidates.Count);
     Equal("https://www.amiami.jp/images/favicon.png", candidates[0].AbsoluteUri);
     Equal("https://www.amiami.jp/images/apple-touch-icon.png", candidates[1].AbsoluteUri);
+}
+static void TestModifiedClickRules()
+{
+    True(LauncherClickRules.BlocksMouseAction(System.Windows.Input.ModifierKeys.Shift));
+    True(LauncherClickRules.BlocksMouseAction(System.Windows.Input.ModifierKeys.Control));
+    True(LauncherClickRules.BlocksMouseAction(System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift));
+    True(!LauncherClickRules.BlocksMouseAction(System.Windows.Input.ModifierKeys.None));
+    True(!LauncherClickRules.BlocksMouseAction(System.Windows.Input.ModifierKeys.Alt));
 }
 static void TestSpecifiedBookmarkIconUrl()
 {

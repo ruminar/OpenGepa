@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private bool _refreshing, _launching, _dialogOpen, _settingSearch;
     private TreeViewItem? _pressedTreeItem;
     private bool _pressedTreeExpander;
+    private bool _pressedTreeModifier, _lastTreeClickModifier;
     private System.Windows.Controls.Primitives.Popup? _renamePopup;
     private LauncherNode? _renamingNode;
     private readonly Dictionary<string, HashSet<string>> _expandedByTab = new(StringComparer.OrdinalIgnoreCase);
@@ -101,20 +102,21 @@ public partial class MainWindow : Window
         var source = e.OriginalSource as DependencyObject;
         _pressedTreeItem = FindAncestor<TreeViewItem>(source);
         _pressedTreeExpander = FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(source) is not null;
+        _pressedTreeModifier = LauncherClickRules.BlocksMouseAction(Keyboard.Modifiers);
     }
     private async void LauncherTree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        var pressedItem = _pressedTreeItem; var pressedExpander = _pressedTreeExpander;
-        _pressedTreeItem = null; _pressedTreeExpander = false;
+        var pressedItem = _pressedTreeItem; var pressedExpander = _pressedTreeExpander; var modified = _pressedTreeModifier || LauncherClickRules.BlocksMouseAction(Keyboard.Modifiers);
+        _pressedTreeItem = null; _pressedTreeExpander = false; _pressedTreeModifier = false; _lastTreeClickModifier = modified;
         var releasedItem = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
-        if (pressedItem is null || pressedExpander || !ReferenceEquals(pressedItem, releasedItem)) return;
+        if (pressedItem is null || pressedExpander || modified || !ReferenceEquals(pressedItem, releasedItem)) return;
         if (pressedItem.DataContext is GroupNode && e.ClickCount == 1) { pressedItem.IsExpanded = !pressedItem.IsExpanded; e.Handled = true; return; }
         if (pressedItem.DataContext is LauncherNode launcher && ShouldLaunch(launcher, 1)) { e.Handled = true; await Launch(launcher); }
     }
     private async void LauncherTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         var hit = LauncherTree.InputHitTest(e.GetPosition(LauncherTree)) as DependencyObject; var item = FindAncestor<TreeViewItem>(hit);
-        if (item?.DataContext is LauncherNode launcher && ShouldLaunch(launcher, 2)) { e.Handled = true; await Launch(launcher); }
+        if (item?.DataContext is LauncherNode launcher && !_pressedTreeModifier && !_lastTreeClickModifier && !LauncherClickRules.BlocksMouseAction(Keyboard.Modifiers) && ShouldLaunch(launcher, 2)) { e.Handled = true; await Launch(launcher); }
     }
     private async void LauncherTree_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
