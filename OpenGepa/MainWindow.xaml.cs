@@ -188,7 +188,7 @@ public partial class MainWindow : Window
         if (node is FileItem file) { menu.Items.Add(Menu("起動対象を変更", () => ChangeTarget(file))); menu.Items.Add(Menu("Windowsのプロパティを開く", () => OpenProperties(file))); }
         else if (node is DirectoryItem directory) menu.Items.Add(Menu("参照先を変更", () => ChangeDirectoryTarget(directory)));
         else if (node is UrlItem url) { menu.Items.Add(Menu("URLを変更", () => ChangeTarget(url))); menu.Items.Add(Menu("ページタイトルを名前に設定", () => _ = FetchPageTitle(url, SelectedTabId))); }
-        menu.Items.Add(new Separator()); menu.Items.Add(Menu("アイコンを変更", () => ChangeNodeIcon(node))); if (!web && node is FileItem retry) menu.Items.Add(Menu("アイコンを再取得", () => RetryNodeIcon(retry))); if (node is UrlItem site) menu.Items.Add(Menu("サイトのアイコンを取得", () => _ = FetchUrlIcon(site, SelectedTabId))); menu.Items.Add(Menu("アイコンを標準に戻す", () => SetNodeIcon(node.Id, null))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("削除", () => DeleteNode(node)));
+        menu.Items.Add(new Separator()); menu.Items.Add(Menu("アイコンを変更", () => ChangeNodeIcon(node))); if (!web && node is FileItem retry) menu.Items.Add(Menu("アイコンを再取得", () => RetryNodeIcon(retry))); if (node is UrlItem site) { menu.Items.Add(Menu("サイトのアイコンを取得", () => _ = FetchUrlIcon(site, SelectedTabId))); menu.Items.Add(Menu("アイコンURLを指定して取得", () => FetchSpecifiedUrlIcon(site, SelectedTabId))); } menu.Items.Add(Menu("アイコンを標準に戻す", () => SetNodeIcon(node.Id, null))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("削除", () => DeleteNode(node)));
     }
     private void AddCreationItems(ContextMenu menu, string? parentId)
     {
@@ -350,6 +350,13 @@ public partial class MainWindow : Window
         var result = await _app.SiteIconService.TryFetchAsync(node.Target, node.Name);
         if (!result.IsSuccess) { var dialog = new DiagnosticDialog("OpenGepa - URLアイコン診断", $"サイトのアイコンを取得できませんでした。\n対象: {node.Target}", result.Error ?? "詳細はありません。") { Owner = this }; ShowDialog(dialog.ShowDialog); return; }
         Commit(data => { var tab = data.Tabs.FirstOrDefault(t => t.Id == tabId); var found = tab is null ? null : FindNode(tab.Children, node.Id); if (found is not null) found.Icon = result.IconPath; });
+    }
+    private void FetchSpecifiedUrlIcon(UrlItem node, string tabId)
+    {
+        var dialog = new TextPromptDialog("アイコンURLを指定して取得", "アイコンURL（相対URL可）") { Owner = this };
+        if (ShowDialog(dialog.ShowDialog) != true) return;
+        if (_app.QueueSpecifiedBookmarkIcon(tabId, node, dialog.Value)) return;
+        ShowDialog(() => MessageBox.Show("HTTPまたはHTTPSのアイコンURLを指定してください。\n相対URLは、このブックマークのURLを基準に解決します。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning));
     }
     private async Task FetchPageTitle(UrlItem node, string tabId)
     {

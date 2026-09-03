@@ -136,6 +136,19 @@ public sealed class AppService
     private void RequestDeferredSave() => DataSaveQueue.RequestDeferredSave(Store.Clone(Data), NextPersistenceVersion());
 
     public void QueueBookmarkIcons(string tabId, IEnumerable<BookmarkIconCandidate> candidates) => BookmarkIconQueue.Enqueue(tabId, candidates);
+    public bool QueueSpecifiedBookmarkIcon(string tabId, UrlItem item, string iconAddress)
+    {
+        if (!TryResolveBookmarkIconUrl(item.Target, iconAddress, out var iconUrl)) return false;
+        BookmarkIconQueue.Enqueue(tabId, [new BookmarkIconCandidate(item.Id, item.Name, item.Target, null, iconUrl, ReplaceExisting: true)], webLimit: 1);
+        return true;
+    }
+    public static bool TryResolveBookmarkIconUrl(string pageUrl, string iconAddress, out string iconUrl)
+    {
+        iconUrl = string.Empty;
+        if (!Uri.TryCreate(pageUrl, UriKind.Absolute, out var page) || (page.Scheme != Uri.UriSchemeHttp && page.Scheme != Uri.UriSchemeHttps) || !Uri.TryCreate(page, iconAddress.Trim(), out var icon) || (icon.Scheme != Uri.UriSchemeHttp && icon.Scheme != Uri.UriSchemeHttps)) return false;
+        iconUrl = icon.AbsoluteUri;
+        return true;
+    }
     public void QueueMissingGroupIcons(string tabId, string groupId)
     {
         var tab = Data.Tabs.FirstOrDefault(item => item.Id == tabId);
@@ -151,7 +164,7 @@ public sealed class AppService
             foreach (var result in results)
             {
                 var tab = data.Tabs.FirstOrDefault(item => item.Id == result.TabId);
-                if (tab is not null && FindNode(tab.Children, result.ItemId) is UrlItem { Icon: null } item) item.Icon = result.IconPath;
+                if (tab is not null && FindNode(tab.Children, result.ItemId) is UrlItem item && (result.ReplaceExisting || item.Icon is null)) item.Icon = result.IconPath;
             }
         }, out _));
     }

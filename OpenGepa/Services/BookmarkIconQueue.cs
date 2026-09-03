@@ -21,7 +21,7 @@ public sealed class BookmarkIconQueue
 
     public void Enqueue(string tabId, IEnumerable<BookmarkIconCandidate> candidates, int webLimit = 200)
     {
-        var jobs = candidates.GroupBy(item => item.Url, StringComparer.OrdinalIgnoreCase).Select(group => new IconJob(tabId, group.Key, group.First().Name, group.Select(item => item.ItemId).ToList(), group.First().EmbeddedIcon, group.First().IconUri)).ToList();
+        var jobs = candidates.GroupBy(item => (item.Url, item.IconUri, item.ReplaceExisting), StringTupleComparer.Instance).Select(group => new IconJob(tabId, group.First().Url, group.First().Name, group.Select(item => item.ItemId).ToList(), group.First().EmbeddedIcon, group.First().IconUri, group.First().ReplaceExisting)).ToList();
         if (jobs.Count > 0) _batches.Writer.TryWrite(new IconBatch(jobs, webLimit));
     }
 
@@ -36,7 +36,7 @@ public sealed class BookmarkIconQueue
             {
                 var icon = TryImportEmbedded(job.EmbeddedIcon, job.Name);
                 if (icon is null && batch.WebRemaining-- > 0) icon = (await _sites.TryFetchBookmarkIconAsync(job.Url, job.IconUri, job.Name)).IconPath;
-                if (icon is not null) pending.AddRange(job.ItemIds.Select(id => new BookmarkIconResult(job.TabId, id, icon)));
+                if (icon is not null) pending.AddRange(job.ItemIds.Select(id => new BookmarkIconResult(job.TabId, id, icon, job.ReplaceExisting)));
                 if (pending.Count >= ResultBatchSize) { _completed(pending); pending = []; }
             }
             if (pending.Count > 0) _completed(pending);
@@ -56,8 +56,16 @@ public sealed class BookmarkIconQueue
         catch { return null; }
     }
 
-    private sealed record IconJob(string TabId, string Url, string Name, IReadOnlyList<string> ItemIds, string? EmbeddedIcon, string? IconUri);
+    private sealed record IconJob(string TabId, string Url, string Name, IReadOnlyList<string> ItemIds, string? EmbeddedIcon, string? IconUri, bool ReplaceExisting);
     private sealed class IconBatch(IReadOnlyList<IconJob> jobs, int webRemaining) { public IReadOnlyList<IconJob> Jobs { get; } = jobs; public int WebRemaining { get; set; } = webRemaining; }
 }
 
-public sealed record BookmarkIconResult(string TabId, string ItemId, string IconPath);
+public sealed record BookmarkIconResult(string TabId, string ItemId, string IconPath, bool ReplaceExisting);
+
+file sealed class StringTupleComparer : IEqualityComparer<(string Url, string? IconUri, bool ReplaceExisting)>
+{
+    public static readonly StringTupleComparer Instance = new();
+    public bool Equals((string Url, string? IconUri, bool ReplaceExisting) x, (string Url, string? IconUri, bool ReplaceExisting) y) =>
+        x.ReplaceExisting == y.ReplaceExisting && string.Equals(x.Url, y.Url, StringComparison.OrdinalIgnoreCase) && string.Equals(x.IconUri, y.IconUri, StringComparison.OrdinalIgnoreCase);
+    public int GetHashCode((string Url, string? IconUri, bool ReplaceExisting) value) => HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(value.Url), value.IconUri is null ? 0 : StringComparer.OrdinalIgnoreCase.GetHashCode(value.IconUri), value.ReplaceExisting);
+}

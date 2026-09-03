@@ -31,6 +31,7 @@ var tests = new (string Name, Action Run)[]
     ("Browser URL drop text", TestBrowserUrlDropText),
     ("URL registration names", TestUrlRegistrationNames),
     ("Site icon HTML candidates", TestSiteIconHtmlCandidates),
+    ("Specified bookmark icon URL resolves relative paths", TestSpecifiedBookmarkIconUrl),
     ("v0.1 data migrates to built-in tabs", TestV01Migration),
     ("Built-in tab visibility and order are preserved", TestBuiltInTabPresentation),
     ("Web launcher accepts only URLs", TestWebLauncherRestriction),
@@ -364,6 +365,14 @@ static void TestSiteIconHtmlCandidates()
     Equal(2, candidates.Count);
     Equal("https://www.amiami.jp/images/favicon.png", candidates[0].AbsoluteUri);
     Equal("https://www.amiami.jp/images/apple-touch-icon.png", candidates[1].AbsoluteUri);
+}
+static void TestSpecifiedBookmarkIconUrl()
+{
+    True(AppService.TryResolveBookmarkIconUrl("https://opnsense/?url=/ui/core/dashboard", "/ui/themes/opnsense/build/images/favicon.png?v=77bee956c7aefc5e", out var icon));
+    Equal("https://opnsense/ui/themes/opnsense/build/images/favicon.png?v=77bee956c7aefc5e", icon);
+    True(AppService.TryResolveBookmarkIconUrl("https://example.com/a/page", "icons/favicon.png", out icon));
+    Equal("https://example.com/a/icons/favicon.png", icon);
+    True(!AppService.TryResolveBookmarkIconUrl("https://example.com", "file:///C:/favicon.ico", out _));
 }
 
 static void TestV01Migration()
