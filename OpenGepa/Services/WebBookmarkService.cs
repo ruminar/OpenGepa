@@ -152,7 +152,7 @@ public sealed class WebBookmarkService
 }
 
 public sealed record SkippedBookmark(string Name, string Url);
-public sealed record BookmarkIconCandidate(string ItemId, string Name, string Url, string? EmbeddedIcon, string? IconUri, bool ReplaceExisting = false);
+public sealed record BookmarkIconCandidate(string ItemId, string Name, string Url, string? EmbeddedIcon, string? IconUri, bool ReplaceExisting = false, bool DirectOnly = false);
 internal sealed record ParsedBookmarks(ObservableCollection<LauncherNode> Nodes, IReadOnlyList<SkippedBookmark> Skipped, IReadOnlyList<BookmarkIconCandidate> IconCandidates);
 public sealed record BookmarkImportResult(GroupNode? Root, IReadOnlyList<SkippedBookmark> Skipped, IReadOnlyList<BookmarkIconCandidate> IconCandidates)
 {

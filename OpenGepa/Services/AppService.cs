@@ -139,7 +139,7 @@ public sealed class AppService
     public bool QueueSpecifiedBookmarkIcon(string tabId, UrlItem item, string iconAddress)
     {
         if (!TryResolveBookmarkIconUrl(item.Target, iconAddress, out var iconUrl)) return false;
-        BookmarkIconQueue.Enqueue(tabId, [new BookmarkIconCandidate(item.Id, item.Name, item.Target, null, iconUrl, ReplaceExisting: true)], webLimit: 1);
+        BookmarkIconQueue.Enqueue(tabId, [new BookmarkIconCandidate(item.Id, item.Name, item.Target, null, iconUrl, ReplaceExisting: true, DirectOnly: true)], webLimit: 1);
         return true;
     }
     public static bool TryResolveBookmarkIconUrl(string pageUrl, string iconAddress, out string iconUrl)
@@ -525,12 +525,11 @@ public sealed class SiteIconService
         var diagnostics = new List<string>();
         try
         {
-            var candidates = await FindPageIconCandidatesAsync(uri, diagnostics);
-            foreach (var fallbackPath in new[] { "/favicon.ico", "/favicon.png", "/images/favicon.ico", "/images/favicon.png", "/assets/favicon.ico", "/assets/favicon.png" })
-            {
-                var fallback = new Uri(uri.GetLeftPart(UriPartial.Authority) + fallbackPath);
-                if (!candidates.Contains(fallback, UriComparer.Instance)) candidates.Add(fallback);
-            }
+            var page = await FindPageIconCandidatesAsync(uri, diagnostics);
+            if (!page.IsSuccess) { diagnostics.Add(""); diagnostics.Add("結果: ページHTMLを取得できなかったため、アイコン候補を試行しませんでした。"); return SiteIconFetchResult.Failed(string.Join(Environment.NewLine, diagnostics)); }
+            var candidates = page.Candidates.ToList();
+            var fallback = new Uri(page.FinalUri!.GetLeftPart(UriPartial.Authority) + "/favicon.ico");
+            if (!candidates.Contains(fallback, UriComparer.Instance)) candidates.Add(fallback);
             diagnostics.Add($"アイコン候補数: {candidates.Count}");
             for (var index = 0; index < candidates.Count; index++)
             {
@@ -591,12 +590,25 @@ public sealed class SiteIconService
         }
         catch { return await TryFetchAsync(pageUrl, name); }
     }
+    public async Task<SiteIconFetchResult> TryFetchExplicitIconAsync(string iconUrl, string name)
+    {
+        if (!Uri.TryCreate(iconUrl, UriKind.Absolute, out var icon) || (icon.Scheme != Uri.UriSchemeHttp && icon.Scheme != Uri.UriSchemeHttps)) return SiteIconFetchResult.Failed("HTTPまたはHTTPSのアイコンURLではありません。");
+        try
+        {
+            using var response = await Client.GetAsync(icon, HttpCompletionOption.ResponseHeadersRead);
+            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > MaxIconBytes) return SiteIconFetchResult.Failed("指定したアイコンURLから画像を取得できませんでした。");
+            var (content, overflow) = await ReadLimitedAsync(response.Content, MaxIconBytes);
+            if (overflow) return SiteIconFetchResult.Failed("指定したアイコン画像がサイズ上限を超えています。");
+            using (content) { content.Position = 0; return SiteIconFetchResult.Succeeded(_icons.ImportImage(content, name)); }
+        }
+        catch (Exception ex) { return SiteIconFetchResult.Failed(DescribeException(ex)); }
+    }
     public async Task<SiteTextFetchResult> TryFetchPageTitleAsync(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return SiteTextFetchResult.Failed();
         try { var html = await Client.GetStringAsync(uri); var title = WebUtility.HtmlDecode(Regex.Match(html, "<title\\b[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline).Groups[1].Value); title = Regex.Replace(title, "\\s+", " ").Trim(); return string.IsNullOrWhiteSpace(title) ? SiteTextFetchResult.Failed() : SiteTextFetchResult.Succeeded(title); } catch { return SiteTextFetchResult.Failed(); }
     }
-    private static async Task<List<Uri>> FindPageIconCandidatesAsync(Uri page, List<string> diagnostics)
+    private static async Task<PageIconCandidates> FindPageIconCandidatesAsync(Uri page, List<string> diagnostics)
     {
         diagnostics.Add("[ページHTML]");
         diagnostics.Add("Method: GET");
@@ -613,10 +625,10 @@ public sealed class SiteIconService
             diagnostics.Add($"最終URL: {finalPage}");
             diagnostics.Add($"Content-Type: {response.Content.Headers.ContentType?.ToString() ?? "(なし)"}");
             diagnostics.Add($"Content-Length: {response.Content.Headers.ContentLength?.ToString() ?? "(なし)"}");
-            if (!response.IsSuccessStatusCode) return [];
-            if (response.Content.Headers.ContentLength is > MaxHtmlBytes) { diagnostics.Add($"HTML解析: サイズ上限 {MaxHtmlBytes:N0} bytes 超過"); return []; }
+            if (!response.IsSuccessStatusCode) return PageIconCandidates.Failed;
+            if (response.Content.Headers.ContentLength is > MaxHtmlBytes) { diagnostics.Add($"HTML解析: サイズ上限 {MaxHtmlBytes:N0} bytes 超過"); return PageIconCandidates.Failed; }
             var (content, overflow) = await ReadLimitedAsync(response.Content, MaxHtmlBytes);
-            if (overflow) { diagnostics.Add($"HTML解析: 受信中にサイズ上限 {MaxHtmlBytes:N0} bytes 超過"); return []; }
+            if (overflow) { diagnostics.Add($"HTML解析: 受信中にサイズ上限 {MaxHtmlBytes:N0} bytes 超過"); return PageIconCandidates.Failed; }
             diagnostics.Add($"受信サイズ: {content.Length:N0} bytes");
             content.Position = 0;
             using var reader = new StreamReader(content, detectEncodingFromByteOrderMarks: true);
@@ -624,9 +636,9 @@ public sealed class SiteIconService
             var candidates = ExtractIconCandidates(html, finalPage);
             diagnostics.Add($"HTML内のrel=icon候補: {candidates.Count}");
             foreach (var candidate in candidates) diagnostics.Add($"  {candidate}");
-            return candidates.ToList();
+            return new PageIconCandidates(finalPage, candidates);
         }
-        catch (Exception ex) { diagnostics.Add($"HTML取得/解析エラー: {DescribeException(ex)}"); return []; }
+        catch (Exception ex) { diagnostics.Add($"HTML取得/解析エラー: {DescribeException(ex)}"); return PageIconCandidates.Failed; }
     }
     public static IReadOnlyList<Uri> ExtractIconCandidates(string html, Uri page)
     {
@@ -668,6 +680,11 @@ public sealed class SiteIconService
         public static UriComparer Instance { get; } = new();
         public bool Equals(Uri? x, Uri? y) => string.Equals(x?.AbsoluteUri, y?.AbsoluteUri, StringComparison.OrdinalIgnoreCase);
         public int GetHashCode(Uri obj) => StringComparer.OrdinalIgnoreCase.GetHashCode(obj.AbsoluteUri);
+    }
+    private sealed record PageIconCandidates(Uri? FinalUri, IReadOnlyList<Uri> Candidates)
+    {
+        public static PageIconCandidates Failed { get; } = new(null, []);
+        public bool IsSuccess => FinalUri is not null;
     }
 }
 
