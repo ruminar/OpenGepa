@@ -1,5 +1,5 @@
 <Window x:Class="OpenGepa.EditorWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:models="clr-namespace:OpenGepa.Models" xmlns:local="clr-namespace:OpenGepa"
-        Title="OpenGepa - 編集" Icon="Assets/OpenGepa.ico" Width="820" Height="650" MinWidth="700" MinHeight="500" AllowDrop="True" Drop="Window_Drop" StateChanged="Window_StateChanged" Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}">
+        Title="OpenGepa - 編集" Width="820" Height="650" MinWidth="700" MinHeight="500" AllowDrop="True" Drop="Window_Drop" StateChanged="Window_StateChanged" Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}">
     <Window.Resources>
         <local:TreeRowWidthConverter x:Key="TreeRowWidthConverter"/>
         <local:NodeIconConverter x:Key="NodeIconConverter"/>

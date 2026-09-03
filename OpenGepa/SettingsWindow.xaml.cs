@@ -20,6 +20,7 @@ public partial class SettingsWindow : Window
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
     public void RefreshData(string? selectedTabId = null, bool restoreFocus = false)
     {
+        Icon = WindowIconService.Load(_app);
         selectedTabId ??= (TabsList.SelectedItem as LauncherTab)?.Id;
         _refreshing = true; StartupCheck.IsChecked = _app.StartupService.IsEnabled; var tabs = _app.Data.Tabs.OrderBy(t => t.Order).ToList(); TabsList.ItemsSource = tabs;
         TabsList.SelectedItem = tabs.FirstOrDefault(tab => tab.Id == selectedTabId);

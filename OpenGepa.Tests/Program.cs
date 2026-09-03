@@ -10,6 +10,7 @@ var tests = new (string Name, Action Run)[]
     ("Empty launcher state", TestEmptyLauncherState),
     ("Icon-set app icon cycle", TestIconSetAppIconCycle),
     ("Tray icon set uses ICO", TestTrayIconSetUsesIco),
+    ("Window icon follows tray icon set", TestWindowIconSet),
     ("Default node icons use iconSet", TestDefaultNodeIconsUseIconSet),
     ("Polymorphic round trip", TestRoundTrip),
     ("DirectoryItem has no name field", TestDirectoryItemHasNoNameField),
@@ -366,6 +367,18 @@ static void TestSiteIconHtmlCandidates()
     Equal(2, candidates.Count);
     Equal("https://www.amiami.jp/images/favicon.png", candidates[0].AbsoluteUri);
     Equal("https://www.amiami.jp/images/apple-touch-icon.png", candidates[1].AbsoluteUri);
+}
+static void TestWindowIconSet()
+{
+    WithStore((paths, _) =>
+    {
+        var source = Path.Combine(paths.BaseDirectory, "source.ico"); using (var stream = new FileStream(source, FileMode.Create, FileAccess.Write)) System.Drawing.SystemIcons.Application.Save(stream);
+        var icons = new IconSetService(paths, new IconService(paths)); icons.SetOpenGepaIcon(source);
+        Equal("iconSet/OpenGepa.ico", icons.GetOpenGepaIcon());
+        var app = AppService.Create(paths.BaseDirectory); app.Initialize();
+        var image = WindowIconService.Load(app) as System.Windows.Media.Imaging.BitmapImage;
+        True(image?.UriSource?.LocalPath.EndsWith("iconSet\\OpenGepa.ico", StringComparison.OrdinalIgnoreCase) == true);
+    });
 }
 static void TestModifiedClickRules()
 {

@@ -45,7 +45,7 @@ public partial class EditorWindow : Window
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
     public void RefreshData()
     {
-        CaptureExpansionState();
+        Icon = WindowIconService.Load(_app); CaptureExpansionState();
         _currentTabId = _app.Data.Tabs.Any(t => t.Id == _tabId) ? _tabId : null; TabNameText.Text = Tab?.Name ?? "削除されたApp Launcher"; SetTreeItems(); RestoreTreeState();
     }
     private LauncherTab? Tab => _app.Data.Tabs.FirstOrDefault(t => t.Id == _tabId);
