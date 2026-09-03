@@ -18,6 +18,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Resource Include="Assets\OpenGepa.ico" />
     <Content Include="opengepa.default.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 

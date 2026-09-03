@@ -1,4 +1,4 @@
-<Window x:Class="OpenGepa.SettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="OpenGepa - 設定" Width="680" Height="760" StateChanged="Window_StateChanged" Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}">
+<Window x:Class="OpenGepa.SettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="OpenGepa - 設定" Icon="Assets/OpenGepa.ico" Width="680" Height="760" StateChanged="Window_StateChanged" Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}">
     <DockPanel Margin="16" Background="{DynamicResource AppBackgroundBrush}">
         <Button DockPanel.Dock="Bottom" Content="OK" Width="90" HorizontalAlignment="Right" Margin="0,16,0,0" IsDefault="True" Click="Ok_Click"/>
         <TabControl>

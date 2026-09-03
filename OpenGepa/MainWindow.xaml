@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:OpenGepa"
         xmlns:models="clr-namespace:OpenGepa.Models"
-        Title="OpenGepa" Width="480" Height="600" ResizeMode="NoResize"
+        Title="OpenGepa" Icon="Assets/OpenGepa.ico" Width="480" Height="600" ResizeMode="NoResize"
         WindowStyle="SingleBorderWindow" ShowInTaskbar="False" Topmost="True"
         Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource ItemForegroundBrush}"
         Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown" PreviewTextInput="Window_PreviewTextInput" StateChanged="Window_StateChanged" SourceInitialized="Window_SourceInitialized">
