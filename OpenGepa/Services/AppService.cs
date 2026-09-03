@@ -516,16 +516,19 @@ public sealed class SiteIconService
     private const int MaxHtmlBytes = 2_097_152;
     private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36 OpenGepa/0.1";
     private readonly IconService _icons;
-    private static readonly HttpClient Client = CreateClient();
-    private static HttpClient CreateClient() { var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(8) }; client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent); return client; }
+    private static readonly HttpClient Client = CreateClient(TimeSpan.FromSeconds(8));
+    private static readonly HttpClient BackgroundClient = CreateClient(TimeSpan.FromSeconds(3));
+    private static HttpClient CreateClient(TimeSpan timeout) { var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = timeout }; client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent); return client; }
     public SiteIconService(IconService icons) => _icons = icons;
     public async Task<SiteIconFetchResult> TryFetchAsync(string url, string name)
+        => await TryFetchAsync(url, name, Client);
+    private async Task<SiteIconFetchResult> TryFetchAsync(string url, string name, HttpClient client)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return SiteIconFetchResult.Failed("HTTPまたはHTTPSのURLではありません。");
         var diagnostics = new List<string>();
         try
         {
-            var page = await FindPageIconCandidatesAsync(uri, diagnostics);
+            var page = await FindPageIconCandidatesAsync(uri, diagnostics, client);
             if (!page.IsSuccess) { diagnostics.Add(""); diagnostics.Add("結果: ページHTMLを取得できなかったため、アイコン候補を試行しませんでした。"); return SiteIconFetchResult.Failed(string.Join(Environment.NewLine, diagnostics)); }
             var candidates = page.Candidates.ToList();
             var fallback = new Uri(page.FinalUri!.GetLeftPart(UriPartial.Authority) + "/favicon.ico");
@@ -546,7 +549,7 @@ public sealed class SiteIconService
                     using var request = new HttpRequestMessage(HttpMethod.Get, iconUri);
                     request.Headers.Referrer = uri;
                     request.Headers.Accept.ParseAdd("image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8");
-                    using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                    using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
                     var finalUri = response.RequestMessage?.RequestUri ?? iconUri;
                     diagnostics.Add($"HTTP: {(int)response.StatusCode} {response.ReasonPhrase}");
                     diagnostics.Add($"最終URL: {finalUri}");
@@ -579,16 +582,16 @@ public sealed class SiteIconService
     }
     public async Task<SiteIconFetchResult> TryFetchBookmarkIconAsync(string pageUrl, string? iconUrl, string name)
     {
-        if (string.IsNullOrWhiteSpace(iconUrl) || !Uri.TryCreate(iconUrl, UriKind.Absolute, out var icon) || (icon.Scheme != Uri.UriSchemeHttp && icon.Scheme != Uri.UriSchemeHttps)) return await TryFetchAsync(pageUrl, name);
+        if (string.IsNullOrWhiteSpace(iconUrl) || !Uri.TryCreate(iconUrl, UriKind.Absolute, out var icon) || (icon.Scheme != Uri.UriSchemeHttp && icon.Scheme != Uri.UriSchemeHttps)) return await TryFetchAsync(pageUrl, name, BackgroundClient);
         try
         {
-            using var response = await Client.GetAsync(icon, HttpCompletionOption.ResponseHeadersRead);
-            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > MaxIconBytes) return await TryFetchAsync(pageUrl, name);
+            using var response = await BackgroundClient.GetAsync(icon, HttpCompletionOption.ResponseHeadersRead);
+            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > MaxIconBytes) return await TryFetchAsync(pageUrl, name, BackgroundClient);
             var (content, overflow) = await ReadLimitedAsync(response.Content, MaxIconBytes);
-            if (overflow) return await TryFetchAsync(pageUrl, name);
+            if (overflow) return await TryFetchAsync(pageUrl, name, BackgroundClient);
             using (content) { content.Position = 0; return SiteIconFetchResult.Succeeded(_icons.ImportImage(content, name)); }
         }
-        catch { return await TryFetchAsync(pageUrl, name); }
+        catch { return await TryFetchAsync(pageUrl, name, BackgroundClient); }
     }
     public async Task<SiteIconFetchResult> TryFetchExplicitIconAsync(string iconUrl, string name)
     {
@@ -608,7 +611,7 @@ public sealed class SiteIconService
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return SiteTextFetchResult.Failed();
         try { var html = await Client.GetStringAsync(uri); var title = WebUtility.HtmlDecode(Regex.Match(html, "<title\\b[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline).Groups[1].Value); title = Regex.Replace(title, "\\s+", " ").Trim(); return string.IsNullOrWhiteSpace(title) ? SiteTextFetchResult.Failed() : SiteTextFetchResult.Succeeded(title); } catch { return SiteTextFetchResult.Failed(); }
     }
-    private static async Task<PageIconCandidates> FindPageIconCandidatesAsync(Uri page, List<string> diagnostics)
+    private static async Task<PageIconCandidates> FindPageIconCandidatesAsync(Uri page, List<string> diagnostics, HttpClient client)
     {
         diagnostics.Add("[ページHTML]");
         diagnostics.Add("Method: GET");
@@ -619,7 +622,7 @@ public sealed class SiteIconService
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, page);
             request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-            using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             var finalPage = response.RequestMessage?.RequestUri ?? page;
             diagnostics.Add($"HTTP: {(int)response.StatusCode} {response.ReasonPhrase}");
             diagnostics.Add($"最終URL: {finalPage}");
