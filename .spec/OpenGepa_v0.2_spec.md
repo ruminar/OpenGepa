@@ -37,7 +37,7 @@ Windows Menu、ストアアプリ、主要操作プリセットはシステム�
 
 通常アプリランチャーおよびWeb専用タブのGroup、FileItem、UrlItemは、TreeViewで選択してF2キーまたは右クリックの［名前を変更］を選ぶと行内で名前を編集できる。Enterまたはフォーカス移動で確定し、Escで取り消す。DirectoryItemは表示名を持たないため対象外である。編集が許可されたWindows Menuのショートカットも同じ操作で改名でき、参照元に応じて通常のファイル操作またはUACを伴う限定ヘルパーを使う。
 
-`iconSet`のタブアイコンは、通常アプリランチャーに`appIcon1.png`、`appIcon2.png`、…、Web専用タブに`urlIcon1.png`、`urlIcon2.png`、…を用いる。各系列は正の連番を数字順に循環利用する。Windows Menu、ストアアプリ、Windows主要操作はそれぞれ`winMenu.png`、`winStore.png`、`winCust.png`を用いる。個別に設定したタブアイコンがあれば、それを優先する。`iconSet/OpenGepa.ico`（互換として`OpenGepa.png`も可）が存在する場合は、タスクトレイとランチャー、設定、編集の各タイトルバーでも最優先で用いる。ない場合はアプリ内蔵の`Assets/OpenGepa.ico`を用いる。
+`iconSet`のタブアイコンは、通常アプリランチャーに`appIcon1.png`、`appIcon2.png`、…、Web専用タブに`urlIcon1.png`、`urlIcon2.png`、…を用いる。各系列は正の連番を数字順に循環利用する。Windows Menu、ストアアプリ、Windows主要操作はそれぞれ`winMenu.png`、`winStore.png`、`winCust.png`を用いる。個別に設定したタブアイコンがあれば、それを優先する。`iconSet/OpenGepa.ico`（互換として`OpenGepa.png`も可）が存在する場合は、タスクトレイとランチャー、設定、編集の各タイトルバーでも最優先で用いる。ない場合は実行中のEXEへ埋め込んだアプリケーションアイコンを用いる。`Assets/OpenGepa.ico`はビルド時にEXEへ埋め込むだけで、配布ZIPへ個別ファイルとして出力しない。
 
 ### 3.2 タブごとの実行中状態
 

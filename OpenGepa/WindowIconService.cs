@@ -1,4 +1,6 @@
 using System.Windows.Media;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
 using OpenGepa.Services;
 
 namespace OpenGepa;
@@ -18,6 +20,18 @@ public static class WindowIconService
             }
             catch { }
         }
-        return IconPathConverter.LoadImage(Path.Combine(AppContext.BaseDirectory, "Assets", "OpenGepa.ico"), 32);
+        return LoadEmbeddedApplicationIcon();
+    }
+    private static ImageSource LoadEmbeddedApplicationIcon()
+    {
+        System.Drawing.Icon? icon = null;
+        try
+        {
+            icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenGepa.exe"));
+            var source = Imaging.CreateBitmapSourceFromHIcon((icon ?? System.Drawing.SystemIcons.Application).Handle, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(32, 32));
+            source.Freeze();
+            return source;
+        }
+        finally { icon?.Dispose(); }
     }
 }
