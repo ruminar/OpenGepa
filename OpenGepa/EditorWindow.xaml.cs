@@ -30,6 +30,8 @@ public partial class EditorWindow : Window
     private EditorRootNode? _editorRoot;
     private AdornerLayer? _dropAdornerLayer;
     private TreeDropInsertionAdorner? _dropAdorner;
+    private System.Windows.Controls.Primitives.Popup? _renamePopup;
+    private string? _renamingNodeId;
     private const string NodeDragFormat = "OpenGepa.LauncherNodeId";
     public EditorWindow(AppService app, string tabId)
     {
@@ -47,6 +49,7 @@ public partial class EditorWindow : Window
         _currentTabId = _app.Data.Tabs.Any(t => t.Id == _tabId) ? _tabId : null; TabNameText.Text = Tab?.Name ?? "削除されたApp Launcher"; SetTreeItems(); RestoreTreeState();
     }
     private LauncherTab? Tab => _app.Data.Tabs.FirstOrDefault(t => t.Id == _tabId);
+    private bool IsWebTab => Tab?.IsWebTab == true;
     private HashSet<string> SelectedIds => _currentTabId is null ? [] : _selectedByTab.TryGetValue(_currentTabId, out var selected) ? selected : _selectedByTab[_currentTabId] = new(StringComparer.OrdinalIgnoreCase);
     private void SetTreeItems() { _editorRoot = Tab is null ? null : new EditorRootNode(Tab.Children); EditorTree.ItemsSource = _editorRoot is null ? Array.Empty<EditorRootNode>() : new[] { _editorRoot }; }
     private void RenameTab_Click(object sender, RoutedEventArgs e)
@@ -56,11 +59,13 @@ public partial class EditorWindow : Window
     private void AddGroup_Click(object sender, RoutedEventArgs e) => AddNode(new GroupNode(), false, true);
     private void AddFile_Click(object sender, RoutedEventArgs e)
     {
+        if (IsWebTab) return;
         var open = new OpenFileDialog { Title = "登録するファイル", CheckFileExists = true, Filter = DirectoryCandidateRules.FileItemDialogFilter, FilterIndex = 1 }; if (open.ShowDialog(this) != true) return;
         AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(open.FileName), Target = open.FileName }, true, true);
     }
     private void AddDirectory_Click(object sender, RoutedEventArgs e)
     {
+        if (IsWebTab) return;
         using var folder = new System.Windows.Forms.FolderBrowserDialog { Description = "登録するディレクトリ" }; if (folder.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
         AddNode(new DirectoryItem { Target = folder.SelectedPath }, true, true);
     }
@@ -68,6 +73,7 @@ public partial class EditorWindow : Window
     private void AddNode(LauncherNode node, bool target, bool chooseDestination = false, string? initialDestinationId = null, bool initialDestinationSpecified = false)
     {
         if (Tab is null) return;
+        if (IsWebTab && node is not GroupNode and not UrlItem) return;
         var currentDestinationId = chooseDestination ? initialDestinationSpecified ? initialDestinationId : DefaultDestinationId() : GetPrimarySelectedNode() is GroupNode selectedGroup ? selectedGroup.Id : null;
         var directory = node is DirectoryItem;
         var d = new ItemDialog("項目を追加", DataValidator.NodeLabel(node), node switch { NamedLauncherItem i => i.Target, DirectoryItem i => i.Target, _ => "" }, target, chooseDestination ? DestinationOptions.Build(Tab) : null, currentDestinationId, !directory) { Owner = this }; if (d.ShowDialog() != true) return;
@@ -99,8 +105,7 @@ public partial class EditorWindow : Window
     {
         if (Tab is null || GetSingleSelectedNode() is not LauncherNode selected) return;
         if (selected is DirectoryItem) return;
-        var d = new TextPromptDialog("名前を変更", "表示名", DataValidator.NodeLabel(selected)) { Owner = this }; if (d.ShowDialog() != true) return;
-        var tabId = Tab.Id; Commit(data => { var found = FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id); if (found is GroupNode group) group.Name = d.Value; else if (found is NamedLauncherItem item) item.Name = d.Value; }, tabId);
+        Dispatcher.BeginInvoke(() => BeginInlineRename(selected));
     }
     private void ChangeSelectedTarget()
     {
@@ -135,7 +140,41 @@ public partial class EditorWindow : Window
         Commit(data => FindNode(data.Tabs.First(t => t.Id == tabId).Children, node.Id)!.Icon = null, tabId);
     }
     private void Delete_Click(object sender, RoutedEventArgs e) => DeleteSelected();
-    private void EditorTree_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e) { if (e.Key == Key.Delete && e.OriginalSource is not System.Windows.Controls.TextBox) { DeleteSelected(); e.Handled = true; } }
+    private void EditorTree_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.F2 && e.OriginalSource is not System.Windows.Controls.TextBox && GetSingleSelectedNode() is LauncherNode node && node is not DirectoryItem) { BeginInlineRename(node); e.Handled = true; return; }
+        if (e.Key == Key.Delete && e.OriginalSource is not System.Windows.Controls.TextBox) { DeleteSelected(); e.Handled = true; }
+    }
+
+    private void BeginInlineRename(LauncherNode node)
+    {
+        if (Tab is null || node is DirectoryItem) return;
+        var container = FindContainer(EditorTree, node);
+        if (container is null) return;
+        CancelInlineRename();
+        var text = new System.Windows.Controls.TextBox { Text = DataValidator.NodeLabel(node), MinWidth = 120, Width = Math.Max(120, container.ActualWidth - 42), Padding = new Thickness(2, 0, 2, 0) };
+        text.KeyDown += (_, e) => { if (e.Key == Key.Enter) { CompleteInlineRename(true); e.Handled = true; } else if (e.Key == Key.Escape) { CompleteInlineRename(false); e.Handled = true; } };
+        text.LostKeyboardFocus += (_, _) => CompleteInlineRename(true);
+        _renamingNodeId = node.Id;
+        _renamePopup = new System.Windows.Controls.Primitives.Popup { PlacementTarget = container, Placement = System.Windows.Controls.Primitives.PlacementMode.Relative, HorizontalOffset = 33, VerticalOffset = 2, StaysOpen = true, Child = text, AllowsTransparency = true, IsOpen = true };
+        Dispatcher.BeginInvoke(() => { text.Focus(); text.SelectAll(); });
+    }
+
+    private void CancelInlineRename()
+    {
+        var popup = _renamePopup; _renamePopup = null; _renamingNodeId = null;
+        if (popup is not null) popup.IsOpen = false;
+    }
+
+    private void CompleteInlineRename(bool commit)
+    {
+        var popup = _renamePopup;
+        if (popup?.Child is not System.Windows.Controls.TextBox text || _renamingNodeId is not string nodeId) return;
+        CancelInlineRename();
+        if (!commit || Tab is null) return;
+        var tabId = Tab.Id;
+        Commit(data => { var found = FindNode(data.Tabs.First(t => t.Id == tabId).Children, nodeId); if (found is GroupNode group) group.Name = text.Text; else if (found is NamedLauncherItem item) item.Name = text.Text; }, tabId);
+    }
     private void DeleteSelected()
     {
         if (Tab is null) return; var nodes = GetSelectedNodes(); if (nodes.Count == 0) return;
@@ -178,7 +217,7 @@ public partial class EditorWindow : Window
         if (e.Handled) return;
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = container?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
         if (TryGetDroppedUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
-        if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
+        if (IsWebTab || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
         var paths = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop)!;
         foreach (var path in paths) { if (File.Exists(path)) AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(path), Target = path }, true, true, destinationId, true); else if (Directory.Exists(path)) AddNode(new DirectoryItem { Target = path }, true, true, destinationId, true); }
     }
@@ -232,6 +271,11 @@ public partial class EditorWindow : Window
     private void AddCreationItems(ContextMenu menu)
     {
         menu.Items.Add(ContextMenuItem("グループを追加", () => AddGroup_Click(this, new RoutedEventArgs()), true));
+        if (IsWebTab)
+        {
+            menu.Items.Add(ContextMenuItem("URLを追加", () => AddUrl_Click(this, new RoutedEventArgs()), true));
+            return;
+        }
         menu.Items.Add(ContextMenuItem("ファイルを追加", () => AddFile_Click(this, new RoutedEventArgs()), true));
         menu.Items.Add(ContextMenuItem("Directory参照追加（UNC可）", () => AddDirectory_Click(this, new RoutedEventArgs()), true));
         menu.Items.Add(ContextMenuItem("URLを追加", () => AddUrl_Click(this, new RoutedEventArgs()), true));
@@ -263,7 +307,7 @@ public partial class EditorWindow : Window
         else
         {
             ClearDropInsertion();
-            if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) || TryGetDroppedUrl(e.Data, out _)) { e.Effects = System.Windows.DragDropEffects.Copy; e.Handled = true; }
+            if ((!IsWebTab && e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) || TryGetDroppedUrl(e.Data, out _)) { e.Effects = System.Windows.DragDropEffects.Copy; e.Handled = true; }
         }
     }
     private void EditorTree_DragLeave(object sender, System.Windows.DragEventArgs e) => ClearDropInsertion();
@@ -274,7 +318,7 @@ public partial class EditorWindow : Window
         {
             var externalTarget = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = externalTarget?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
             if (TryGetDroppedUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
-            if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) && externalTarget?.DataContext is LauncherNode externalNode) SelectOnly(externalNode.Id, externalTarget);
+            if (!IsWebTab && e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) && externalTarget?.DataContext is LauncherNode externalNode) SelectOnly(externalNode.Id, externalTarget);
             return;
         }
         e.Handled = true; if (Tab is null) return;
@@ -356,6 +400,7 @@ public partial class EditorWindow : Window
         var selectedIds = selected.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var sources = selected.Where(node => !HasSelectedAncestor(sourceTab.Children, node.Id, selectedIds)).OrderBy(node => NodeOrder(sourceTab.Children, node.Id)).ToList();
         if (sources.Count == 0) return;
+        if (targetTab.IsWebTab && sources.Any(node => node is not GroupNode and not UrlItem)) throw new InvalidDataException("WebランチャーにはURL以外を移動できません。");
         if (sourceTabId == targetTabId && sources.Any(source => source.Id == parentId || source is GroupNode group && parentId is not null && FindNode(group.Children, parentId) is not null))
             throw new InvalidDataException("自分自身または子孫のGroupへは移動できません。");
         var newCollection = parentId is null ? targetTab.Children : (FindNode(targetTab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("移動先Groupが見つかりません。");
@@ -383,6 +428,7 @@ public partial class EditorWindow : Window
     { for (var i = 0; i < nodes.Count; i++) { nodes[i].Order = i; if (nodes[i] is GroupNode group) NormalizeOrders(group.Children); } }
     private static T? FindAncestor<T>(DependencyObject? value) where T : DependencyObject
     { while (value is not null && value is not T) value = VisualTreeHelper.GetParent(value); return value as T; }
+    private static TreeViewItem? FindContainer(ItemsControl root, object value) { if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem direct) return direct; foreach (var item in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem child) { var found = FindContainer(child, value); if (found is not null) return found; } return null; }
     private static IEnumerable<LauncherNode> Walk(IEnumerable<LauncherNode> nodes) { foreach (var n in nodes) { yield return n; if (n is GroupNode g) foreach (var c in Walk(g.Children)) yield return c; } }
     private IReadOnlyList<LauncherNode> GetSelectedNodes()
     { if (Tab is null) return []; var ids = SelectedIds; return Walk(Tab.Children).Where(x => ids.Contains(x.Id)).ToList(); }

@@ -45,10 +45,13 @@ public sealed class ProfileService
     public void Save(string requestedPath)
     {
         var path = UniquePath(requestedPath); var temp = path + $".{Guid.NewGuid():N}.tmp";
-        var profileData = _app.Store.Clone(_app.Data); RewriteForProfile(profileData);
+        var profileData = _app.Store.Clone(_app.Data);
+        profileData.Tabs = new System.Collections.ObjectModel.ObservableCollection<LauncherTab>(profileData.Tabs.Where(tab => !tab.IsSystemTab));
+        if (profileData.Tabs.All(tab => tab.Id != profileData.SelectedTabId)) profileData.SelectedTabId = profileData.Tabs.FirstOrDefault()?.Id;
+        RewriteForProfile(profileData);
         using (var archive = ZipFile.Open(temp, ZipArchiveMode.Create))
         {
-            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 1, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.1.0" }, _app.Store.JsonOptions));
+            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 1, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.2.0" }, _app.Store.JsonOptions));
             WriteEntry(archive, "settings.json", JsonSerializer.Serialize(new { selectedTabId = profileData.SelectedTabId, appearance = profileData.Appearance, itemLaunch = profileData.ItemLaunch, defaultIcons = profileData.DefaultIcons, tabs = profileData.Tabs.Select(t => new { t.Id, t.IsVisible, t.Order }) }, _app.Store.JsonOptions));
             foreach (var tab in profileData.Tabs) WriteEntry(archive, $"menus/{tab.Id}.json", JsonSerializer.Serialize(tab, _app.Store.JsonOptions));
             foreach (var iconPath in EnumerateIcons(_app.Data).Distinct(StringComparer.OrdinalIgnoreCase))
@@ -58,6 +61,8 @@ public sealed class ProfileService
             }
             foreach (var source in EnumerateIconSetFiles())
                 archive.CreateEntryFromFile(source, "iconSet/" + Path.GetFileName(source), CompressionLevel.Optimal);
+            foreach (var source in EnumerateManagedShortcuts(_app.Data).Distinct(StringComparer.OrdinalIgnoreCase))
+                archive.CreateEntryFromFile(source, "shortcuts/" + Path.GetFileName(source), CompressionLevel.Optimal);
         }
         using (var verify = ZipFile.OpenRead(temp))
         {
@@ -93,7 +98,8 @@ public sealed class ProfileService
             foreach (var menu in Directory.EnumerateFiles(Path.Combine(tempRoot, "menus"), "*.json"))
             {
                 var tab = JsonSerializer.Deserialize<LauncherTab>(File.ReadAllText(menu), _app.Store.JsonOptions) ?? throw new InvalidDataException("LauncherTabを読み込めません。");
-                RewriteIcons(tab, tempRoot); data.Tabs.Add(tab);
+                if (tab.IsSystemTab || tab.Kind is not LauncherTabKinds.Launcher and not LauncherTabKinds.Web) throw new InvalidDataException("Profileに含められないタブ種別です。");
+                RewriteIcons(tab, tempRoot); RewriteShortcuts(tab, tempRoot); data.Tabs.Add(tab);
             }
             ImportIconSetFiles(tempRoot);
             return _app.Store.Deserialize(_app.Store.Serialize(data));
@@ -106,12 +112,46 @@ public sealed class ProfileService
         if (tab.Icon is not null) tab.Icon = ImportIcon(tab.Icon, tempRoot);
         foreach (var node in Walk(tab.Children)) if (node.Icon is not null) node.Icon = ImportIcon(node.Icon, tempRoot);
     }
-    private static void RewriteForProfile(OpenGepaData data)
+    private void RewriteForProfile(OpenGepaData data)
     {
         foreach (var tab in data.Tabs)
         {
             if (tab.Icon is not null) tab.Icon = "icons/" + Path.GetFileName(tab.Icon);
-            foreach (var node in Walk(tab.Children)) if (node.Icon is not null) node.Icon = "icons/" + Path.GetFileName(node.Icon);
+            foreach (var node in Walk(tab.Children))
+            {
+                if (node.Icon is not null) node.Icon = "icons/" + Path.GetFileName(node.Icon);
+                if (node is FileItem file && IsManagedShortcut(file.Target)) file.Target = "shortcuts/" + Path.GetFileName(file.Target);
+            }
+        }
+    }
+
+    private void RewriteShortcuts(LauncherTab tab, string tempRoot)
+    {
+        foreach (var file in Walk(tab.Children).OfType<FileItem>())
+        {
+            var normalized = file.Target.Replace('\\', '/');
+            if (!normalized.StartsWith("shortcuts/", StringComparison.OrdinalIgnoreCase)) continue;
+            var name = Path.GetFileName(normalized);
+            if (!name.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) throw new InvalidDataException("Profileのショートカット参照が不正です。");
+            var source = Path.Combine(tempRoot, "shortcuts", name);
+            if (!File.Exists(source)) throw new InvalidDataException("Profile内のショートカットが見つかりません。");
+            Directory.CreateDirectory(_app.Paths.ShortcutDirectory);
+            var target = Path.Combine(_app.Paths.ShortcutDirectory, name);
+            if (File.Exists(target))
+            {
+                if (!SHA256.HashData(File.ReadAllBytes(source)).SequenceEqual(SHA256.HashData(File.ReadAllBytes(target))))
+                {
+                    var stem = Path.GetFileNameWithoutExtension(name); var extension = Path.GetExtension(name);
+                    for (var index = 2; ; index++)
+                    {
+                        target = Path.Combine(_app.Paths.ShortcutDirectory, $"{stem}_{index}{extension}");
+                        if (!File.Exists(target)) break;
+                        if (SHA256.HashData(File.ReadAllBytes(source)).SequenceEqual(SHA256.HashData(File.ReadAllBytes(target)))) break;
+                    }
+                }
+            }
+            if (!File.Exists(target)) File.Copy(source, target, false);
+            file.Target = target;
         }
     }
     private string? ImportIcon(string profilePath, string root)
@@ -133,6 +173,17 @@ public sealed class ProfileService
     {
         var full = Path.GetFullPath(Path.Combine(_app.Paths.BaseDirectory, relative));
         if (!full.StartsWith(_app.Paths.IconDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("不正なアイコンパスです。"); return full;
+    }
+    private bool IsManagedShortcut(string target)
+    {
+        if (!Path.IsPathFullyQualified(target) || !target.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return false;
+        var full = Path.GetFullPath(target); return full.StartsWith(_app.Paths.ShortcutDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+    private IEnumerable<string> EnumerateManagedShortcuts(OpenGepaData data)
+    {
+        foreach (var tab in data.Tabs.Where(tab => !tab.IsSystemTab))
+            foreach (var file in Walk(tab.Children).OfType<FileItem>().Where(file => IsManagedShortcut(file.Target)))
+                yield return file.Target;
     }
     private IEnumerable<string> EnumerateIconSetFiles()
     {

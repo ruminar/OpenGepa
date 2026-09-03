@@ -3,6 +3,7 @@ using System.Windows.Data;
 using System.Windows.Media.Imaging;
 using System.Windows.Interop;
 using OpenGepa.Models;
+using OpenGepa.Services;
 
 namespace OpenGepa;
 
@@ -38,6 +39,16 @@ public sealed class NodeIconConverter : IValueConverter
     {
         if (value is not LauncherNode node) return null;
         if (node is FileItem { IsTargetMissing: true }) { var image = Imaging.CreateBitmapSourceFromHIcon(System.Drawing.SystemIcons.Error.Handle, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(32, 32)); image.Freeze(); return image; }
+        var size = parameter is not null && int.TryParse(parameter.ToString(), out var requested) ? requested : 32;
+        var runtimeIcon = node switch
+        {
+            WindowsMenuShortcutItem shortcut => ShellIconService.TryLoad(shortcut.Target, size),
+            StoreAppItem storeApp => ShellIconService.TryLoad(storeApp.IconSource, size),
+            PresetItem preset => ShellIconService.TryLoad(preset.IconSource, size),
+            WindowsMenuGroupNode => ShellIconService.TryLoadFolder(size),
+            _ => null
+        };
+        if (runtimeIcon is not null) return runtimeIcon;
         var relative = node.Icon ?? (System.Windows.Application.Current is App ? App.Services.IconSetService.GetDefaultNodeIcon(node) ?? node switch
         {
             GroupNode => App.Services.Data.DefaultIcons.GroupIcon,

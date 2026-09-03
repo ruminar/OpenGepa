@@ -5,6 +5,13 @@ using OpenGepa.Services;
 
 namespace OpenGepa;
 
+public sealed class PresetVisibilityRow
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public bool IsVisible { get; set; }
+}
+
 public partial class SettingsWindow : Window
 {
     private readonly AppService _app; private bool _refreshing;
@@ -23,6 +30,9 @@ public partial class SettingsWindow : Window
         TrayIconPath.Text = _app.IconSetService.GetOpenGepaIcon() ?? _app.Data.DefaultIcons.TrayIcon ?? "アプリ標準";
         GroupIconDelete.IsEnabled = _app.IconSetService.HasDefaultIcon("group"); DirectoryIconDelete.IsEnabled = _app.IconSetService.HasDefaultIcon("directory"); UrlIconDelete.IsEnabled = _app.IconSetService.HasDefaultIcon("url"); TrayIconDelete.IsEnabled = _app.IconSetService.HasOpenGepaIcon;
         FileItemClickCombo.SelectedValue = _app.Data.ItemLaunch.FileItemClickCount.ToString(); DirectoryItemClickCombo.SelectedValue = _app.Data.ItemLaunch.DirectoryItemClickCount.ToString(); UrlItemClickCombo.SelectedValue = _app.Data.ItemLaunch.UrlItemClickCount.ToString();
+        WindowsMenuCurrentEditCheck.IsChecked = _app.Data.WindowsMenu.AllowCurrentUserEdit; WindowsMenuAllUsersEditCheck.IsChecked = _app.Data.WindowsMenu.AllowAllUsersEdit;
+        FoldersFirstRadio.IsChecked = _app.Data.WindowsMenu.FoldersFirst; ShortcutsFirstRadio.IsChecked = !_app.Data.WindowsMenu.FoldersFirst;
+        PresetItemsList.ItemsSource = _app.PresetService.AvailableDefinitions().Select(item => new PresetVisibilityRow { Id = item.Id, Name = $"{item.Group} / {item.Name}", IsVisible = !_app.Data.Presets.HiddenItemIds.Contains(item.Id) }).ToList();
         _refreshing = false; UpdateMoveButtons();
         if (restoreFocus && TabsList.SelectedItem is LauncherTab selected)
             Dispatcher.BeginInvoke(() => { if (TabsList.ItemContainerGenerator.ContainerFromItem(selected) is System.Windows.Controls.ListBoxItem item) item.Focus(); }, System.Windows.Threading.DispatcherPriority.Input);
@@ -85,6 +95,23 @@ public partial class SettingsWindow : Window
             if (!visible && data.SelectedTabId == tab.Id) data.SelectedTabId = data.Tabs.Where(t => t.IsVisible).OrderBy(t => t.Order).FirstOrDefault()?.Id;
         });
     }
+    private void WindowsMenuEdit_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing) return;
+        Commit(data => { data.WindowsMenu.AllowCurrentUserEdit = WindowsMenuCurrentEditCheck.IsChecked == true; data.WindowsMenu.AllowAllUsersEdit = WindowsMenuAllUsersEditCheck.IsChecked == true; });
+    }
+    private void WindowsMenuSort_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing) return;
+        Commit(data => data.WindowsMenu.FoldersFirst = FoldersFirstRadio.IsChecked == true);
+    }
+    private void PresetVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing || (sender as FrameworkElement)?.DataContext is not PresetVisibilityRow row) return;
+        var visible = ((System.Windows.Controls.CheckBox)sender).IsChecked == true;
+        Commit(data => { if (visible) data.Presets.HiddenItemIds.Remove(row.Id); else data.Presets.HiddenItemIds.Add(row.Id); });
+    }
+    private void RestorePresets_Click(object sender, RoutedEventArgs e) => Commit(data => data.Presets.HiddenItemIds.Clear());
     private void Up_Click(object sender, RoutedEventArgs e) => Move(-1);
     private void Down_Click(object sender, RoutedEventArgs e) => Move(1);
     private void Move(int delta) { if (TabsList.SelectedItem is not LauncherTab tab) return; var ordered = _app.Data.Tabs.OrderBy(x => x.Order).ToList(); var i = ordered.FindIndex(x => x.Id == tab.Id); var j = i + delta; if (j < 0 || j >= ordered.Count) return; var other = ordered[j]; Commit(data => { var a = data.Tabs.First(x => x.Id == tab.Id); var b = data.Tabs.First(x => x.Id == other.Id); (a.Order, b.Order) = (b.Order, a.Order); }, tab.Id, true); }

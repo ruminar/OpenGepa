@@ -14,12 +14,15 @@ public sealed class AppPaths
     public string BackupFile => Path.Combine(BaseDirectory, "opengepa.backup.json");
     public string LastGoodFile => Path.Combine(BaseDirectory, "opengepa.lastgood.json");
     public string TemporaryFile => Path.Combine(BaseDirectory, "opengepa.tmp");
+    public string DefaultDataFile => Path.Combine(BaseDirectory, "opengepa.default.json");
     public string IconDirectory => Path.Combine(BaseDirectory, "icon");
     public string IconSetDirectory => Path.Combine(BaseDirectory, "iconSet");
+    public string ShortcutDirectory => Path.Combine(BaseDirectory, "shortcut");
     public void EnsureWritable()
     {
         Directory.CreateDirectory(IconDirectory);
         Directory.CreateDirectory(IconSetDirectory);
+        Directory.CreateDirectory(ShortcutDirectory);
         var probe = Path.Combine(BaseDirectory, $".write-{Guid.NewGuid():N}.tmp");
         try { using var s = new FileStream(probe, FileMode.CreateNew); s.WriteByte(0); }
         finally { if (File.Exists(probe)) File.Delete(probe); }
@@ -45,33 +48,41 @@ public sealed class DataValidator
     {
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion)
             throw new InvalidDataException($"未対応のformatVersionです: {data.FormatVersion}");
+        if (data.WindowsMenu is null || data.Presets is null) throw new InvalidDataException("Windows機能の設定がありません。");
+        if (data.Presets.HiddenItemIds is null || data.Presets.HiddenItemIds.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("プリセットの表示設定が不正です。");
         AppearanceRules.Validate(data.Appearance);
         ValidateItemLaunch(data.ItemLaunch);
         ValidateDefaultIcons(data.DefaultIcons);
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        ValidateNames(data.Tabs.Select(x => x.Name), "LauncherTab");
+        ValidateNames(data.Tabs.Where(x => !x.IsSystemTab).Select(x => x.Name), "LauncherTab");
         ValidateOrders(data.Tabs.Select(x => x.Order), "LauncherTab");
         foreach (var tab in data.Tabs)
         {
             ValidateId(tab.Id, ids); tab.Name = Required(tab.Name); ValidateIcon(tab.Icon, tab.Name);
-            ValidateNodes(tab.Children, ids, []);
+            if (!LauncherTabKinds.IsKnown(tab.Kind)) throw new InvalidDataException($"未対応のタブ種別です: {tab.Kind}");
+            if (tab.IsSystemTab)
+            {
+                if (tab.Children.Count != 0) throw new InvalidDataException("特殊タブに保存済みの項目は含められません。");
+                continue;
+            }
+            ValidateNodes(tab.Children, ids, [], tab.Kind);
         }
         SortTabs(data.Tabs);
         if (data.SelectedTabId is not null && data.Tabs.All(t => !t.Id.Equals(data.SelectedTabId, StringComparison.OrdinalIgnoreCase)))
             data.SelectedTabId = null;
     }
 
-    private static void ValidateNodes(IEnumerable<LauncherNode> source, HashSet<string> ids, HashSet<string> ancestors)
+    private static void ValidateNodes(IEnumerable<LauncherNode> source, HashSet<string> ids, HashSet<string> ancestors, string tabKind)
     {
         var nodes = source.ToList(); ValidateNames(nodes.Select(NodeLabel), "同一Group"); ValidateOrders(nodes.Select(x => x.Order), "同一Group");
         foreach (var node in nodes)
         {
-            ValidateId(node.Id, ids); ValidateNode(node);
+            ValidateId(node.Id, ids); ValidateNode(node, tabKind);
             ValidateIcon(node.Icon, NodeLabel(node));
             if (node is GroupNode group)
             {
                 if (!ancestors.Add(group.Id)) throw new InvalidDataException($"Group {group.Name} に循環があります。");
-                ValidateNodes(group.Children, ids, ancestors); ancestors.Remove(group.Id);
+                ValidateNodes(group.Children, ids, ancestors, tabKind); ancestors.Remove(group.Id);
             }
         }
         if (source is ObservableCollection<LauncherNode> collection) SortNodes(collection);
@@ -83,7 +94,7 @@ public sealed class DataValidator
     }
     private static void ValidateOrders(IEnumerable<int> orders, string scope)
     { var values = orders.ToList(); if (values.Any(x => x < 0) || values.Distinct().Count() != values.Count) throw new InvalidDataException($"{scope}の表示順が不正です。"); }
-    private static void ValidateNode(LauncherNode node)
+    private static void ValidateNode(LauncherNode node, string tabKind)
     {
         switch (node)
         {
@@ -95,15 +106,20 @@ public sealed class DataValidator
                 {
                     if (!Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) throw new InvalidDataException($"{item.Name}のURLはHTTPまたはHTTPSで指定してください。");
                 }
-                else if (!Path.IsPathFullyQualified(item.Target)) throw new InvalidDataException($"{item.Name}のtargetは絶対パスで指定してください。");
+                else
+                {
+                    if (tabKind == LauncherTabKinds.Web) throw new InvalidDataException("WebランチャーにはURL以外を登録できません。");
+                    if (!Path.IsPathFullyQualified(item.Target)) throw new InvalidDataException($"{item.Name}のtargetは絶対パスで指定してください。");
+                }
                 break;
             case DirectoryItem directory:
+                if (tabKind == LauncherTabKinds.Web) throw new InvalidDataException("WebランチャーにはDirectory参照を登録できません。");
                 if (string.IsNullOrWhiteSpace(directory.Target) || !Path.IsPathFullyQualified(directory.Target)) throw new InvalidDataException("Directory参照のtargetは絶対パスで指定してください。");
                 break;
             default: throw new InvalidDataException("未対応のランチャー項目です。");
         }
     }
-    public static string NodeLabel(LauncherNode node) => node switch { DirectoryItem directory => directory.Target, GroupNode group => group.Name, NamedLauncherItem item => item.Name, _ => "項目" };
+    public static string NodeLabel(LauncherNode node) => node switch { DirectoryItem directory => directory.Target, GroupNode group => group.Name, NamedLauncherItem item => item.Name, StoreAppItem store => store.Name, PresetItem preset => preset.Name, _ => "項目" };
     private static void ValidateDefaultIcons(DefaultIconSettings icons)
     {
         ValidateIcon(icons.GroupIcon, "Group既定"); ValidateIcon(icons.DirectoryIcon, "Directory既定"); ValidateIcon(icons.UrlIcon, "URL既定"); ValidateIcon(icons.TrayIcon, "トレイ既定");
@@ -150,8 +166,17 @@ public sealed class DataStore
             catch (Exception ex) { errors.Add($"{Path.GetFileName(path)}: {ex.Message}"); }
         }
         if (errors.Count > 0) throw new InvalidDataException("保存データを読み込めませんでした。\n" + string.Join("\n", errors));
-        var tab = new LauncherTab();
-        return new(new OpenGepaData { SelectedTabId = tab.Id, Tabs = new ObservableCollection<LauncherTab> { tab } }, DataSource.New);
+        if (File.Exists(_paths.DefaultDataFile))
+        {
+            try
+            {
+                var data = Read(_paths.DefaultDataFile);
+                Save(data);
+                return new(data, DataSource.New);
+            }
+            catch (Exception ex) { throw new InvalidDataException($"{Path.GetFileName(_paths.DefaultDataFile)}を読み込めませんでした: {ex.Message}"); }
+        }
+        return new(CreateInitialData(), DataSource.New);
     }
 
     public void Save(OpenGepaData data)
@@ -161,11 +186,22 @@ public sealed class DataStore
         else File.Move(_paths.TemporaryFile, _paths.DataFile);
     }
 
+    /// <summary>UIの一時的な状態変更向け。既に読み込み済みのデータを再検証せず、同じ原子的置換で保存します。</summary>
+    public void SaveWithoutValidation(OpenGepaData data)
+    {
+        Write(_paths.TemporaryFile, data);
+        if (File.Exists(_paths.DataFile)) File.Replace(_paths.TemporaryFile, _paths.DataFile, _paths.BackupFile, true);
+        else File.Move(_paths.TemporaryFile, _paths.DataFile);
+    }
+
     public OpenGepaData Clone(OpenGepaData data) => Deserialize(JsonSerializer.Serialize(data, JsonOptions));
     public void MarkLastGood(OpenGepaData data) => WriteLastGood(data);
     public string Serialize(OpenGepaData data) => JsonSerializer.Serialize(data, JsonOptions);
     public OpenGepaData Deserialize(string json)
-    { var data = JsonSerializer.Deserialize<OpenGepaData>(json, JsonOptions) ?? throw new InvalidDataException("JSONが空です。"); _validator.Validate(data); return data; }
+    {
+        var data = JsonSerializer.Deserialize<OpenGepaData>(json, JsonOptions) ?? throw new InvalidDataException("JSONが空です。");
+        Migrate(data); _validator.Validate(data); return data;
+    }
     private OpenGepaData Read(string path) => Deserialize(File.ReadAllText(path, Encoding.UTF8));
     private void WriteLastGood(OpenGepaData data)
     {
@@ -177,5 +213,29 @@ public sealed class DataStore
         using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
         using var writer = new StreamWriter(stream, new UTF8Encoding(false));
         writer.Write(JsonSerializer.Serialize(data, JsonOptions)); writer.Flush(); stream.Flush(true);
+    }
+
+    private static OpenGepaData CreateInitialData()
+    {
+        var tab = new LauncherTab { Name = "Launcher", Kind = LauncherTabKinds.Launcher, Order = 0 };
+        var data = new OpenGepaData { SelectedTabId = tab.Id, Tabs = new ObservableCollection<LauncherTab> { tab } };
+        BuiltInTabs.Ensure(data);
+        return data;
+    }
+
+    private static void Migrate(OpenGepaData data)
+    {
+        if (data.FormatVersion == 1)
+        {
+            data.FormatVersion = OpenGepaData.CurrentFormatVersion;
+            foreach (var tab in data.Tabs ?? []) if (string.IsNullOrWhiteSpace(tab.Kind)) tab.Kind = LauncherTabKinds.Launcher;
+        }
+        if (data.FormatVersion != OpenGepaData.CurrentFormatVersion) return;
+        data.Tabs ??= [];
+        data.WindowsMenu ??= new WindowsMenuSettings();
+        data.Presets ??= new PresetSettings();
+        data.Presets.HiddenItemIds ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tab in data.Tabs) if (string.IsNullOrWhiteSpace(tab.Kind)) tab.Kind = LauncherTabKinds.Launcher;
+        BuiltInTabs.Ensure(data);
     }
 }

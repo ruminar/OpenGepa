@@ -16,6 +16,7 @@ var tests = new (string Name, Action Run)[]
     ("Backup recovery", TestBackupRecovery),
     ("Last-good recovery", TestLastGoodRecovery),
     ("Profile round trip and icon collision", TestProfileRoundTrip),
+    ("Profile excludes system tabs and carries managed shortcuts", TestProfileSpecialTabExclusion),
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
     ("File dialog filter", TestFileDialogFilter),
     ("Appearance settings", TestAppearanceSettings),
@@ -30,6 +31,14 @@ var tests = new (string Name, Action Run)[]
     ("Browser URL drop text", TestBrowserUrlDropText),
     ("URL registration names", TestUrlRegistrationNames),
     ("Site icon HTML candidates", TestSiteIconHtmlCandidates),
+    ("v0.1 data migrates to built-in tabs", TestV01Migration),
+    ("Built-in tab visibility and order are preserved", TestBuiltInTabPresentation),
+    ("Web launcher accepts only URLs", TestWebLauncherRestriction),
+    ("Store app grouping keeps same initial together", TestStoreAppGrouping),
+    ("Windows Menu merges current-user shortcuts first", TestWindowsMenuMerge),
+    ("Bookmark HTML imports atomically into timestamp root", TestBookmarkImport),
+    ("Default data seeds only an absent configuration", TestDefaultDataSeeding),
+    ("Deferred persistence is serialized and does not overwrite newer data", TestDeferredPersistence),
 };
 
 var failed = 0;
@@ -80,6 +89,10 @@ static void TestIconSetAppIconCycle()
         Equal("iconSet/appIcon2.png", icons.GetAppIcon(tabs[1], tabs));
         Equal("iconSet/appIcon4.png", icons.GetAppIcon(tabs[2], tabs));
         Equal("iconSet/appIcon1.png", icons.GetAppIcon(tabs[3], tabs));
+        File.WriteAllText(Path.Combine(paths.IconSetDirectory, "urlIcon1.png"), "x"); File.WriteAllText(Path.Combine(paths.IconSetDirectory, "winStore.png"), "x");
+        var web = new LauncherTab { Name = "Web", Kind = LauncherTabKinds.Web, Order = 4 }; var store = new LauncherTab { Name = "Store", Kind = LauncherTabKinds.StoreApps, Order = 5 };
+        Equal("iconSet/urlIcon1.png", icons.GetAppIcon(web, tabs.Append(web).Append(store)));
+        Equal("iconSet/winStore.png", icons.GetAppIcon(store, tabs.Append(web).Append(store)));
     });
 }
 
@@ -298,6 +311,11 @@ static void TestEditorExpansionPersistence()
             var app = AppService.Create(path); app.Initialize();
             var group = new GroupNode { Name = "Open" }; group.Children.Add(new FileItem { Name = "Tool.exe", Target = "C:\\Tools\\Tool.exe" });
             var tab = new LauncherTab { Name = "Editor", Children = new ObservableCollection<LauncherNode> { group } }; app.ReplaceData(Data(tab));
+            var settings = new SettingsWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; settings.Show(); settings.RefreshData(); settings.UpdateLayout(); True(settings.FindName("PresetItemsList") is System.Windows.Controls.ListBox); settings.Hide();
+            True(app.TryCommit(_ => { }, out var setupError), setupError);
+            var launcher = new MainWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; launcher.Show(); launcher.RefreshData(true); launcher.UpdateLayout();
+            var pin = (System.Windows.Controls.Primitives.ToggleButton)launcher.FindName("PinToggle"); pin.IsChecked = true; PumpDispatcher(); True(app.Data.IsLauncherPinned);
+            app.SelectTab(BuiltInTabs.PresetsId); PumpDispatcher(); launcher.RefreshData(true); True(app.SelectedTab?.Kind == LauncherTabKinds.Presets); launcher.Hide();
             var window = new EditorWindow(app, tab.Id) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; window.Show(); window.RefreshData(); window.UpdateLayout();
             var tree = (System.Windows.Controls.TreeView)window.FindName("EditorTree"); tree.UpdateLayout();
             var root = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromItem(tree.Items[0]); True(root.DataContext is EditorRootNode); root.IsExpanded = true; tree.UpdateLayout();
@@ -348,9 +366,138 @@ static void TestSiteIconHtmlCandidates()
     Equal("https://www.amiami.jp/images/apple-touch-icon.png", candidates[1].AbsoluteUri);
 }
 
+static void TestV01Migration()
+{
+    WithStore((_, store) =>
+    {
+        var legacy = store.Serialize(Data(new LauncherTab { Name = "Legacy" }))
+            .Replace("\"formatVersion\": 2", "\"formatVersion\": 1", StringComparison.Ordinal)
+            .Replace("\"kind\": \"launcher\",", string.Empty, StringComparison.Ordinal);
+        var migrated = store.Deserialize(legacy);
+        Equal(2, migrated.FormatVersion); Equal(LauncherTabKinds.Launcher, migrated.Tabs.Single(tab => tab.Name == "Legacy").Kind);
+        True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.WindowsMenu));
+        True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.StoreApps));
+        True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.Presets));
+    });
+}
+
+static void TestBuiltInTabPresentation()
+{
+    var data = Data(new LauncherTab { Name = "Launcher", Order = 0 });
+    BuiltInTabs.Ensure(data);
+    var store = data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.StoreApps);
+    store.IsVisible = false; store.Order = 1;
+    var windowsMenu = data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.WindowsMenu);
+    windowsMenu.Order = 3;
+    data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.Presets).Order = 2;
+    BuiltInTabs.Ensure(data);
+    Equal(false, data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.StoreApps).IsVisible);
+    Equal(1, data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.StoreApps).Order);
+    Equal(3, data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.WindowsMenu).Order);
+}
+
+static void TestWebLauncherRestriction()
+{
+    var web = new LauncherTab { Name = "Web", Kind = LauncherTabKinds.Web };
+    web.Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tool.exe" });
+    Throws<InvalidDataException>(() => new DataValidator().Validate(Data(web)));
+    web.Children.Clear(); web.Children.Add(new UrlItem { Name = "OpenGepa", Target = "https://example.com" });
+    new DataValidator().Validate(Data(web));
+}
+
+static void TestStoreAppGrouping()
+{
+    var sameInitial = Enumerable.Range(1, 21).Select(index => new StoreAppEntry($"A{index:D2}", $"Package{index}!App"));
+    var groups = StoreAppsService.BuildGroups(sameInitial);
+    Equal(1, groups.Count); True(groups[0] is GroupNode { Name: "A", Children.Count: 21 });
+    var split = StoreAppsService.BuildGroups(Enumerable.Range(1, 15).Select(index => new StoreAppEntry($"A{index:D2}", $"A{index}!App")).Append(new StoreAppEntry("B01", "B!App")));
+    Equal(2, split.Count); True(split[0] is GroupNode { Name: "A", Children.Count: 15 }); True(split[1] is GroupNode { Name: "B", Children.Count: 1 });
+}
+
+static void TestWindowsMenuMerge()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); var current = Path.Combine(root, "current"); var allUsers = Path.Combine(root, "all");
+    try
+    {
+        Directory.CreateDirectory(Path.Combine(current, "Tools")); Directory.CreateDirectory(Path.Combine(allUsers, "Tools"));
+        File.WriteAllText(Path.Combine(current, "Tools", "Same.lnk"), "current"); File.WriteAllText(Path.Combine(allUsers, "Tools", "Same.lnk"), "all"); File.WriteAllText(Path.Combine(allUsers, "Tools", "AllOnly.lnk"), "all");
+        var group = (WindowsMenuGroupNode)new WindowsMenuService(current, allUsers).Load(new WindowsMenuSettings()).Single();
+        Equal(2, group.Children.Count); var same = group.Children.OfType<WindowsMenuShortcutItem>().Single(item => item.Name == "Same"); Equal(WindowsMenuSource.CurrentUser, same.Source);
+    }
+    finally { Directory.Delete(root, true); }
+}
+
+static void TestBookmarkImport()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var file = Path.Combine(root, "bookmarks.html");
+        File.WriteAllText(file, "<DL><p><DT><H3>ブックマーク バー</H3><DL><p><DT><A HREF=\"https://example.com\">Example</A><DT><A HREF=\"https://example.org\">Example</A></DL><p></DL><p>");
+        var result = new WebBookmarkService().Import(file, []); var imported = result.Root!; Equal(1, imported.Children.Count);
+        var source = (GroupNode)imported.Children[0]; Equal("ブックマーク バー", source.Name); Equal("Example_1", ((UrlItem)source.Children[1]).Name);
+        var tab = new LauncherTab { Name = "Web", Kind = LauncherTabKinds.Web }; imported.Order = 0; tab.Children.Add(imported); new DataValidator().Validate(Data(tab));
+        File.WriteAllText(file, "<DL><p><DT><A HREF=\"https://example.com\">good</A><DT><A HREF=\"place:sort=8\">bad</A></DL><p>");
+        var skipped = new WebBookmarkService().Import(file, []); Equal(1, skipped.ImportedCount); Equal(1, skipped.Skipped.Count); Equal("place:sort=8", skipped.Skipped[0].Url);
+    }
+    finally { Directory.Delete(root, true); }
+}
+
+static void TestProfileSpecialTabExclusion()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var app = AppService.Create(root); app.Initialize(); var link = Path.Combine(app.Paths.ShortcutDirectory, "portable.lnk"); File.WriteAllText(link, "test");
+        var tab = new LauncherTab { Name = "Portable", Children = new ObservableCollection<LauncherNode> { new FileItem { Name = "Portable", Target = link } } }; app.ReplaceData(Data(tab));
+        var profile = Path.Combine(root, "profile.ogp"); app.ProfileService.Save(profile);
+        using (var archive = System.IO.Compression.ZipFile.OpenRead(profile))
+        {
+            True(archive.Entries.All(entry => !entry.FullName.Contains(BuiltInTabs.WindowsMenuId, StringComparison.OrdinalIgnoreCase)));
+            True(archive.GetEntry("shortcuts/portable.lnk") is not null);
+        }
+        var loaded = app.ProfileService.Load(profile); True(loaded.Tabs.Any(item => item.Kind == LauncherTabKinds.WindowsMenu));
+        Equal(link, ((FileItem)loaded.Tabs.Single(item => item.Name == "Portable").Children.Single()).Target);
+    }
+    finally { Directory.Delete(root, true); }
+}
+
+static void TestDefaultDataSeeding()
+{
+    WithStore((paths, store) =>
+    {
+        var template = new LauncherTab { Name = "From default" };
+        File.WriteAllText(paths.DefaultDataFile, store.Serialize(Data(template)));
+        var first = store.Load(); Equal(DataSource.New, first.Source); Equal("From default", first.Data.Tabs.First(tab => !tab.IsSystemTab).Name); True(File.Exists(paths.DataFile));
+        first.Data.Tabs.First(tab => !tab.IsSystemTab).Name = "Current"; store.Save(first.Data);
+        var second = store.Load(); Equal(DataSource.Current, second.Source); Equal("Current", second.Data.Tabs.First(tab => !tab.IsSystemTab).Name);
+    });
+}
+
+static void TestDeferredPersistence()
+{
+    WithStore((_, store) =>
+    {
+        var first = Data(new LauncherTab { Name = "First", Order = 0 });
+        var second = store.Clone(first); second.Tabs[0].Name = "Second";
+        using var queue = new DataSaveQueue(store, TimeSpan.FromSeconds(10));
+        queue.RequestDeferredSave(first, 1);
+        queue.SaveNowAsync(second, 2).GetAwaiter().GetResult();
+        queue.Flush();
+        Equal("Second", store.Load().Data.Tabs.Single(tab => !tab.IsSystemTab).Name);
+    });
+}
+
 static void WritePng(string path, System.Drawing.Color color)
 {
     using var image = new System.Drawing.Bitmap(2, 2); using var graphics = System.Drawing.Graphics.FromImage(image); graphics.Clear(color); image.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+}
+
+static void PumpDispatcher()
+{
+    var frame = new System.Windows.Threading.DispatcherFrame();
+    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(() => frame.Continue = false, System.Windows.Threading.DispatcherPriority.Background);
+    System.Windows.Threading.Dispatcher.PushFrame(frame);
 }
 
 static OpenGepaData Data(LauncherTab tab) => new() { SelectedTabId = tab.Id, Tabs = new ObservableCollection<LauncherTab> { tab } };

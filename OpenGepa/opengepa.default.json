@@ -1,0 +1,60 @@
+{
+  "formatVersion": 2,
+  "selectedTabId": "20000000-0000-0000-0000-000000000001",
+  "isLauncherPinned": false,
+  "appearance": {
+    "theme": "light",
+    "groupBackgroundColor": "#F1F5F9",
+    "groupForegroundColor": "#101828",
+    "launcherItemBackgroundColor": "#FFFFFF",
+    "launcherItemForegroundColor": "#101828"
+  },
+  "itemLaunch": {
+    "fileItemClickCount": 1,
+    "directoryItemClickCount": 2,
+    "urlItemClickCount": 2
+  },
+  "defaultIcons": {},
+  "windowsMenu": {
+    "allowCurrentUserEdit": false,
+    "allowAllUsersEdit": false,
+    "foldersFirst": true
+  },
+  "presets": {
+    "hiddenItemIds": []
+  },
+  "tabs": [
+    {
+      "id": "20000000-0000-0000-0000-000000000001",
+      "name": "Launcher",
+      "kind": "launcher",
+      "isVisible": true,
+      "order": 0,
+      "children": []
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000001",
+      "name": "Windows Menu",
+      "kind": "windowsMenu",
+      "isVisible": true,
+      "order": 1,
+      "children": []
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000002",
+      "name": "ストアアプリ",
+      "kind": "storeApps",
+      "isVisible": true,
+      "order": 2,
+      "children": []
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000003",
+      "name": "Windows主要操作",
+      "kind": "presets",
+      "isVisible": true,
+      "order": 3,
+      "children": []
+    }
+  ]
+}

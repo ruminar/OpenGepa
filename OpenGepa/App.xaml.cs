@@ -23,6 +23,11 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (ElevatedWindowsMenuHelper.TryRun(e.Args, out var helperExitCode))
+        {
+            Shutdown(helperExitCode);
+            return;
+        }
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
         _mutex = new Mutex(true, MutexName, out var first);
         if (!first)
@@ -60,6 +65,7 @@ public partial class App : System.Windows.Application
         IsExiting = true;
         foreach (var window in Windows.Cast<Window>().ToArray()) window.Close();
         _tray?.Dispose();
+        try { Services.FlushPersistence(); } catch (Exception ex) { MessageBox.Show($"設定の保存に失敗しました。\n\n{ex.Message}", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); }
         Shutdown();
     }
 

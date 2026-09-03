@@ -19,13 +19,19 @@ public sealed class AppService
     private MainWindow? _launcher;
     private readonly Dictionary<string, EditorWindow> _editors = new(StringComparer.OrdinalIgnoreCase);
     private SettingsWindow? _settings;
+    private long _persistenceVersion;
 
     private AppService(AppPaths paths, DataStore store)
     {
-        Paths = paths; Store = store;
+        Paths = paths; Store = store; DataSaveQueue = new DataSaveQueue(store);
         IconService = new IconService(paths);
         IconSetService = new IconSetService(paths, IconService);
         SiteIconService = new SiteIconService(IconService);
+        WindowsMenuService = new WindowsMenuService(paths);
+        StoreAppsService = new StoreAppsService();
+        PresetService = new PresetService(StoreAppsService);
+        ManagedShortcutService = new ManagedShortcutService(paths);
+        WebBookmarkService = new WebBookmarkService();
         LaunchService = new LaunchService(this);
         StartupService = new StartupService();
         ProfileService = new ProfileService(this);
@@ -33,9 +39,15 @@ public sealed class AppService
 
     public AppPaths Paths { get; }
     public DataStore Store { get; }
+    public DataSaveQueue DataSaveQueue { get; }
     public IconService IconService { get; }
     public IconSetService IconSetService { get; }
     public SiteIconService SiteIconService { get; }
+    public WindowsMenuService WindowsMenuService { get; }
+    public StoreAppsService StoreAppsService { get; }
+    public PresetService PresetService { get; }
+    public ManagedShortcutService ManagedShortcutService { get; }
+    public WebBookmarkService WebBookmarkService { get; }
     public LaunchService LaunchService { get; }
     public StartupService StartupService { get; }
     public ProfileService ProfileService { get; }
@@ -59,31 +71,72 @@ public sealed class AppService
     public IReadOnlyList<LauncherTab> VisibleTabs => Data.Tabs.Where(x => x.IsVisible).OrderBy(x => x.Order).ToList();
     public LauncherTab? SelectedTab => VisibleTabs.FirstOrDefault(x => x.Id == Data.SelectedTabId) ?? VisibleTabs.FirstOrDefault();
 
+    public ObservableCollection<LauncherNode> GetDisplayChildren(LauncherTab tab, bool refresh = false)
+    {
+        if (!tab.IsSystemTab) return tab.Children;
+        if (!refresh && tab.RuntimeChildren is not null) return tab.RuntimeChildren;
+        tab.RuntimeChildren = tab.Kind switch
+        {
+            LauncherTabKinds.WindowsMenu => WindowsMenuService.Load(Data.WindowsMenu),
+            LauncherTabKinds.StoreApps => StoreAppsService.Load(refresh),
+            LauncherTabKinds.Presets => PresetService.Load(Data.Presets),
+            _ => tab.RuntimeChildren
+        };
+        return tab.DisplayChildren;
+    }
+
     public bool TryCommit(Action<OpenGepaData> change, out string error)
     {
         try
         {
-            var candidate = Store.Clone(Data); change(candidate); Store.Save(candidate); Data = candidate; ThemePalette.Apply(Data.Appearance);
+            var candidate = Store.Clone(Data); change(candidate); DataSaveQueue.SaveNowAsync(candidate, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = candidate; ThemePalette.Apply(Data.Appearance);
             DataChanged?.Invoke(this, EventArgs.Empty); error = ""; return true;
         }
         catch (Exception ex) { error = ex.Message; return false; }
     }
 
+    public bool TrySetLauncherPinned(bool pinned, out string error)
+    {
+        if (Data.IsLauncherPinned == pinned) { error = string.Empty; return true; }
+        try
+        {
+            Data.IsLauncherPinned = pinned;
+            RequestDeferredSave();
+            DataChanged?.Invoke(this, EventArgs.Empty);
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
     public void ReplaceData(OpenGepaData data)
     {
-        Store.Save(data); Data = data; ThemePalette.Apply(Data.Appearance); DataChanged?.Invoke(this, EventArgs.Empty);
+        DataSaveQueue.SaveNowAsync(data, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = data; ThemePalette.Apply(Data.Appearance); DataChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SelectTab(string id)
     {
         if (Data.SelectedTabId == id) return;
-        TryCommit(x => x.SelectedTabId = id, out _);
+        Data.SelectedTabId = id;
+        RequestDeferredSave();
+        DataChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>アプリ終了前に、選択タブなどの遅延保存を確実に完了します。</summary>
+    public void FlushPersistence() => DataSaveQueue.Flush();
+
+    private long NextPersistenceVersion() => ++_persistenceVersion;
+
+    private void RequestDeferredSave() => DataSaveQueue.RequestDeferredSave(Store.Clone(Data), NextPersistenceVersion());
 
     public void PrepareLauncher()
     {
         _launcher ??= new MainWindow(this);
-        _launcher.RefreshData();
+        _launcher.RefreshData(true);
     }
 
     public void ShowLauncher()
@@ -102,6 +155,7 @@ public sealed class AppService
     {
         var id = tabId ?? SelectedTab?.Id;
         if (id is null) return;
+        if (Data.Tabs.FirstOrDefault(tab => tab.Id == id)?.IsSystemTab == true) return;
         if (!_editors.TryGetValue(id, out var editor))
         {
             editor = new EditorWindow(this, id);
@@ -116,13 +170,16 @@ public sealed class AppService
         var succeeded = TryCommit(data =>
         {
             var source = data.Tabs.FirstOrDefault(x => x.Id == sourceId) ?? throw new InvalidDataException("複製元のApp Launcherが見つかりません。");
+            if (source.IsSystemTab) throw new InvalidDataException("特殊タブは複製できません。");
             var baseName = CopyBaseName(source.Name);
             var index = 2;
             var name = $"{baseName} ({index})";
             var existing = data.Tabs.Select(x => NameRules.Normalize(x.Name)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             while (existing.Contains(NameRules.Normalize(name))) name = $"{baseName} ({++index})";
-            var clone = LauncherTabCopy.Create(source, name, data.Tabs.Count);
+            var nextOrder = data.Tabs.Select(tab => tab.Order).DefaultIfEmpty(-1).Max() + 1;
+            var clone = LauncherTabCopy.Create(source, name, nextOrder);
             data.Tabs.Add(clone);
+            BuiltInTabs.Ensure(data);
             createdId = clone.Id;
         }, out error);
         newTabId = createdId;
@@ -174,6 +231,14 @@ public sealed class LaunchService
     {
         try
         {
+            if (item is StoreAppItem storeApp) return await StoreAppsService.LaunchAsync(storeApp.Aumid);
+            if (item is PresetItem preset) return await _app.PresetService.LaunchAsync(preset);
+            if (item is WindowsMenuShortcutItem windowsMenu)
+            {
+                if (!File.Exists(windowsMenu.Target)) throw new FileNotFoundException("Start Menu のショートカットが見つかりません。", windowsMenu.Target);
+                await Task.Run(() => Process.Start(new ProcessStartInfo(windowsMenu.Target) { UseShellExecute = true }));
+                return (true, string.Empty);
+            }
             var target = item switch { NamedLauncherItem named => named.Target, DirectoryItem directory => directory.Target, _ => throw new InvalidDataException("起動できない項目です。") };
             var repaired = false;
             if (item is FileItem file)
@@ -382,17 +447,25 @@ public sealed class IconSetService
 
     public string? GetAppIcon(LauncherTab tab, IEnumerable<LauncherTab> tabs)
     {
-        var icons = GetAppIcons(); if (icons.Count == 0) return null;
-        var ordered = tabs.OrderBy(x => x.Order).ToList(); var index = ordered.FindIndex(x => x.Id.Equals(tab.Id, StringComparison.OrdinalIgnoreCase));
+        var systemIcon = tab.Kind switch
+        {
+            LauncherTabKinds.WindowsMenu => "winMenu.png",
+            LauncherTabKinds.StoreApps => "winStore.png",
+            LauncherTabKinds.Presets => "winCust.png",
+            _ => null
+        };
+        if (systemIcon is not null) return File.Exists(Path.Combine(_paths.IconSetDirectory, systemIcon)) ? "iconSet/" + systemIcon : null;
+        var icons = GetTabIcons(tab.IsWebTab ? "urlIcon" : "appIcon"); if (icons.Count == 0) return null;
+        var ordered = tabs.Where(item => item.IsWebTab == tab.IsWebTab && !item.IsSystemTab).OrderBy(x => x.Order).ToList(); var index = ordered.FindIndex(x => x.Id.Equals(tab.Id, StringComparison.OrdinalIgnoreCase));
         return index < 0 ? null : icons[index % icons.Count];
     }
 
-    private IReadOnlyList<string> GetAppIcons()
+    private IReadOnlyList<string> GetTabIcons(string prefix)
     {
         if (!Directory.Exists(_paths.IconSetDirectory)) return [];
         return Directory.EnumerateFiles(_paths.IconSetDirectory, "*.png", SearchOption.TopDirectoryOnly)
             .Select(path => new { Path = path, Name = Path.GetFileNameWithoutExtension(path) })
-            .Select(x => System.Text.RegularExpressions.Regex.Match(x.Name, @"^appIcon([1-9]\d*)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is var match && match.Success ? new { x.Path, Number = int.Parse(match.Groups[1].Value) } : null)
+            .Select(x => System.Text.RegularExpressions.Regex.Match(x.Name, $@"^{System.Text.RegularExpressions.Regex.Escape(prefix)}([1-9]\d*)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is var match && match.Success ? new { x.Path, Number = int.Parse(match.Groups[1].Value) } : null)
             .Where(x => x is not null).Select(x => x!)
             .OrderBy(x => x.Number).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase)
             .Select(x => Path.GetRelativePath(_paths.BaseDirectory, x.Path).Replace('\\', '/')).ToList();
