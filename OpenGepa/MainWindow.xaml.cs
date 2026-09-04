@@ -18,6 +18,10 @@ public partial class MainWindow : Window
     private TreeViewItem? _pressedTreeItem;
     private bool _pressedTreeExpander;
     private bool _pressedTreeModifier, _lastTreeClickModifier;
+    private System.Windows.Point _treeDragStart, _tabDragStart;
+    private string? _treeDragNodeId, _tabDragTabId;
+    private const string TreeReorderDragFormat = "OpenGepa.MainTreeReorder";
+    private const string TabReorderDragFormat = "OpenGepa.MainTabReorder";
     private System.Windows.Controls.Primitives.Popup? _renamePopup;
     private LauncherNode? _renamingNode;
     private readonly Dictionary<string, HashSet<string>> _expandedByTab = new(StringComparer.OrdinalIgnoreCase);
@@ -103,6 +107,8 @@ public partial class MainWindow : Window
         _pressedTreeItem = FindAncestor<TreeViewItem>(source);
         _pressedTreeExpander = FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(source) is not null;
         _pressedTreeModifier = LauncherClickRules.BlocksMouseAction(Keyboard.Modifiers);
+        _treeDragNodeId = null;
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.None && !_pressedTreeExpander && _app.SelectedTab is { IsSystemTab: false } && _pressedTreeItem?.DataContext is LauncherNode node) { _treeDragStart = e.GetPosition(LauncherTree); _treeDragNodeId = node.Id; }
     }
     private async void LauncherTree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
@@ -129,6 +135,33 @@ public partial class MainWindow : Window
         if (_launching) return;
         if (item is PresetItem { RequiresConfirmation: true } && ShowDialog(() => MessageBox.Show($"「{DataValidator.NodeLabel(item)}」を実行しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)) != MessageBoxResult.Yes) return;
         _launching = true; try { var result = await _app.LaunchService.LaunchAsync(item); if (result.Success) { if (!_app.Data.IsLauncherPinned) Hide(); } else ShowDialog(() => MessageBox.Show($"「{DataValidator.NodeLabel(item)}」を起動できませんでした。\n\n{result.Error}", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); } finally { _launching = false; }
+    }
+    private void LauncherTree_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _treeDragNodeId is null) return;
+        var point = e.GetPosition(LauncherTree); if (Math.Abs(point.X - _treeDragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(point.Y - _treeDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        var id = _treeDragNodeId; _treeDragNodeId = null;
+        DragDrop.DoDragDrop(LauncherTree, new System.Windows.DataObject(TreeReorderDragFormat, id), System.Windows.DragDropEffects.Move);
+    }
+    private void LauncherTree_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(TreeReorderDragFormat) || e.Data.GetData(TreeReorderDragFormat) is not string sourceId || !CanReorderTree(sourceId, FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject)?.DataContext as LauncherNode)) return;
+        e.Effects = System.Windows.DragDropEffects.Move; e.Handled = true;
+    }
+    private void LauncherTree_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(TreeReorderDragFormat) || e.Data.GetData(TreeReorderDragFormat) is not string sourceId) return;
+        var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var target = container?.DataContext as LauncherNode;
+        if (!CanReorderTree(sourceId, target)) return;
+        var after = container is not null && e.GetPosition(container).Y > container.ActualHeight / 2;
+        var tabId = SelectedTabId; var targetId = target!.Id;
+        Commit(data => { var tab = data.Tabs.First(item => item.Id == tabId); var siblings = FindSiblingCollection(tab.Children, sourceId) ?? throw new InvalidDataException("移動元が見つかりません。"); LauncherReorderRules.MoveSibling(siblings, sourceId, targetId, after); });
+        e.Handled = true;
+    }
+    private bool CanReorderTree(string sourceId, LauncherNode? target)
+    {
+        var tab = _app.SelectedTab; if (tab is null || tab.IsSystemTab || target is null || sourceId == target.Id) return false;
+        return FindSiblingCollection(tab.Children, sourceId) is { } source && FindSiblingCollection(tab.Children, target.Id) is { } destination && ReferenceEquals(source, destination);
     }
 
     private bool ShouldLaunch(LauncherNode item, int clickCount)
@@ -388,6 +421,31 @@ public partial class MainWindow : Window
         }
         TabsList.ContextMenu = menu; if (keyboard) OpenContextMenu(menu, target); else menu.IsOpen = true;
     }
+    private void TabsList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _tabDragTabId = null;
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.None || FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext is not LauncherTab tab) return;
+        _tabDragStart = e.GetPosition(TabsList); _tabDragTabId = tab.Id;
+    }
+    private void TabsList_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _tabDragTabId is null) return;
+        var point = e.GetPosition(TabsList); if (Math.Abs(point.X - _tabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(point.Y - _tabDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        var id = _tabDragTabId; _tabDragTabId = null;
+        DragDrop.DoDragDrop(TabsList, new System.Windows.DataObject(TabReorderDragFormat, id), System.Windows.DragDropEffects.Move);
+    }
+    private void TabsList_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(TabReorderDragFormat) || e.Data.GetData(TabReorderDragFormat) is not string sourceId || FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext is not LauncherTab target || sourceId == target.Id) return;
+        e.Effects = System.Windows.DragDropEffects.Move; e.Handled = true;
+    }
+    private void TabsList_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(TabReorderDragFormat) || e.Data.GetData(TabReorderDragFormat) is not string sourceId) return;
+        var container = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject); if (container?.DataContext is not LauncherTab target || sourceId == target.Id) return;
+        var after = e.GetPosition(container).Y > container.ActualHeight / 2; var targetId = target.Id;
+        Commit(data => LauncherReorderRules.MoveTab(data, sourceId, targetId, after)); e.Handled = true;
+    }
     private void AddNewTabItems(ContextMenu menu) { menu.Items.Add(Menu("設定", _app.ShowSettings)); menu.Items.Add(Menu("アプリランチャーを新規登録", () => NewTab(LauncherTabKinds.Launcher))); menu.Items.Add(Menu("Webランチャーを新規登録", () => NewTab(LauncherTabKinds.Web))); }
     private void NewTab(string kind) { var title = kind == LauncherTabKinds.Web ? "Webランチャーの新規登録" : "アプリランチャーの新規登録"; var d = new TextPromptDialog(title, "名前") { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => { data.Tabs.Add(new LauncherTab { Name = d.Value, Kind = kind, Order = data.Tabs.Select(tab => tab.Order).DefaultIfEmpty(-1).Max() + 1 }); BuiltInTabs.Ensure(data); }); }
     private void DeleteTab(LauncherTab tab) { if (ShowDialog(() => MessageBox.Show($"App Launcher\n「{tab.Name}」を削除しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning)) == MessageBoxResult.Yes) Commit(d => { d.Tabs.Remove(d.Tabs.First(x => x.Id == tab.Id)); NormalizeTabOrders(d.Tabs); }); }
@@ -474,6 +532,7 @@ public partial class MainWindow : Window
     private static IEnumerable<TreeViewItem> EnumerateContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; foreach (var child in EnumerateContainers(item)) yield return child; } }
     private static IEnumerable<TreeViewItem> EnumerateVisibleContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; if (item.IsExpanded) foreach (var child in EnumerateVisibleContainers(item)) yield return child; } }
     private static LauncherNode? FindNode(IEnumerable<LauncherNode>? nodes, string id) { if (nodes is null) return null; foreach (var node in nodes) { if (node.Id == id) return node; if (node is GroupNode group) { var found = FindNode(group.Children, id); if (found is not null) return found; } } return null; }
+    private static ObservableCollection<LauncherNode>? FindSiblingCollection(ObservableCollection<LauncherNode> nodes, string id) { if (nodes.Any(node => node.Id == id)) return nodes; foreach (var group in nodes.OfType<GroupNode>()) { var found = FindSiblingCollection(group.Children, id); if (found is not null) return found; } return null; }
     private static bool RemoveNode(ObservableCollection<LauncherNode> nodes, string id) { var item = nodes.FirstOrDefault(x => x.Id == id); if (item is not null) return nodes.Remove(item); return nodes.OfType<GroupNode>().Any(group => RemoveNode(group.Children, id)); }
     private static void NormalizeOrders(ObservableCollection<LauncherNode> nodes) { for (var i = 0; i < nodes.Count; i++) { nodes[i].Order = i; if (nodes[i] is GroupNode group) NormalizeOrders(group.Children); } }
     private static void NormalizeTabOrders(ObservableCollection<LauncherTab> tabs) { var ordered = tabs.OrderBy(x => x.Order).ToList(); for (var i = 0; i < ordered.Count; i++) ordered[i].Order = i; }

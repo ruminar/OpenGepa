@@ -24,6 +24,7 @@ var tests = new (string Name, Action Run)[]
     ("Appearance settings", TestAppearanceSettings),
     ("Item launch click defaults", TestItemLaunchClickDefaults),
     ("Modified clicks do not launch items", TestModifiedClickRules),
+    ("Launcher reorder keeps scope", TestLauncherReorderRules),
     ("Launcher tab duplication", TestLauncherTabDuplication),
     ("Cross-launcher move", TestCrossLauncherMove),
     ("Small icon size is preserved", TestSmallIconSizeIsPreserved),
@@ -403,6 +404,14 @@ static void TestModifiedClickRules()
     True(LauncherClickRules.BlocksMouseAction(System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift));
     True(!LauncherClickRules.BlocksMouseAction(System.Windows.Input.ModifierKeys.None));
     True(!LauncherClickRules.BlocksMouseAction(System.Windows.Input.ModifierKeys.Alt));
+}
+static void TestLauncherReorderRules()
+{
+    var nodes = new ObservableCollection<LauncherNode> { new FileItem { Name = "A", Order = 0 }, new FileItem { Name = "B", Order = 1 }, new FileItem { Name = "C", Order = 2 } };
+    True(LauncherReorderRules.MoveSibling(nodes, nodes[0].Id, nodes[2].Id, true)); Equal("B", ((FileItem)nodes[0]).Name); Equal("C", ((FileItem)nodes[1]).Name); Equal("A", ((FileItem)nodes[2]).Name);
+    var first = new LauncherTab { Name = "First", Order = 0 }; var second = new LauncherTab { Name = "Second", Order = 1 }; var third = new LauncherTab { Name = "Third", Order = 2 };
+    var data = new OpenGepaData { Tabs = new ObservableCollection<LauncherTab> { first, second, third } };
+    True(LauncherReorderRules.MoveTab(data, first.Id, third.Id, true)); Equal(2, first.Order); Equal(0, second.Order); Equal(1, third.Order);
 }
 static void TestSpecifiedBookmarkIconUrl()
 {

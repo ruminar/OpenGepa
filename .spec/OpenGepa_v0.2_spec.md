@@ -61,6 +61,8 @@ OpenGepaを再起動した後、Windows Menuとストアアプリは全Groupを�
 
 TreeView上で`Shift`または`Ctrl`を押してマウスクリックした場合は、FileItem、DirectoryItem、UrlItem、Windows Menu、ストアアプリ、主要操作プリセットを起動しない。Groupの展開・折り畳みも行わず、通常の選択操作として扱う。押下時または解放時のどちらかで修飾キーが押されていればこの規則を適用する。Enterキーと右クリックメニューからの操作は影響を受けない。
 
+右側の縦タブでは`Ctrl`を押しながらドラッグすると、通常タブおよびシステムタブを含む表示順を変更できる。通常アプリランチャーおよびWeb専用タブのTreeViewでは、`Ctrl`を押しながらドラッグすると、Group、FileItem、DirectoryItem、UrlItemを同じ親Group内でのみ並び替えできる。別Groupへの移動、階層変更、複数項目の移動は編集画面で行う。Windows Menu、ストアアプリ、主要操作プリセットのTreeView内容は並び替えできない。
+
 ## 5. Windows Menuタブ
 
 ### 5.1 正本と表示

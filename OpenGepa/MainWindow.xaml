@@ -46,14 +46,14 @@
         </Grid>
         <Border Grid.Row="1" Margin="10" Background="{DynamicResource PanelBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
             <Grid>
-        <TreeView x:Name="LauncherTree" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource ItemForegroundBrush}" Padding="8" ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                          PreviewMouseLeftButtonDown="LauncherTree_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="LauncherTree_PreviewMouseLeftButtonUp" MouseDoubleClick="LauncherTree_MouseDoubleClick" KeyDown="LauncherTree_KeyDown" PreviewMouseRightButtonDown="LauncherTree_PreviewMouseRightButtonDown"/>
+        <TreeView x:Name="LauncherTree" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource ItemForegroundBrush}" Padding="8" ScrollViewer.HorizontalScrollBarVisibility="Auto" AllowDrop="True"
+                          PreviewMouseLeftButtonDown="LauncherTree_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="LauncherTree_PreviewMouseLeftButtonUp" MouseMove="LauncherTree_MouseMove" DragOver="LauncherTree_DragOver" Drop="LauncherTree_Drop" MouseDoubleClick="LauncherTree_MouseDoubleClick" KeyDown="LauncherTree_KeyDown" PreviewMouseRightButtonDown="LauncherTree_PreviewMouseRightButtonDown"/>
                 <TextBlock x:Name="EmptyText" Text="表示されているランチャーがありません。&#x0a;トレイの［設定］から表示してください。"
                            HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource MutedForegroundBrush}" Visibility="Collapsed"/>
             </Grid>
         </Border>
-        <ListBox x:Name="TabsList" Grid.Row="1" Grid.Column="1" Margin="0,10,10,10" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource TabForegroundBrush}"
-                 SelectionChanged="TabsList_SelectionChanged" PreviewMouseRightButtonDown="TabsList_PreviewMouseRightButtonDown" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox x:Name="TabsList" Grid.Row="1" Grid.Column="1" Margin="0,10,10,10" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource TabForegroundBrush}" AllowDrop="True"
+                 SelectionChanged="TabsList_SelectionChanged" PreviewMouseLeftButtonDown="TabsList_PreviewMouseLeftButtonDown" PreviewMouseRightButtonDown="TabsList_PreviewMouseRightButtonDown" MouseMove="TabsList_MouseMove" DragOver="TabsList_DragOver" Drop="TabsList_Drop" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0"/><Setter Property="HorizontalContentAlignment" Value="Left"/></Style></ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate><DataTemplate>
                 <Border Margin="0,0,0,6" CornerRadius="7" Background="{DynamicResource TabBackgroundBrush}">
