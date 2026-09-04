@@ -490,7 +490,7 @@ public partial class MainWindow : Window
         var after = e.GetPosition(container).Y > container.ActualHeight / 2; var targetId = target.Id;
         Commit(data => LauncherReorderRules.MoveTab(data, sourceId, targetId, after)); e.Handled = true;
     }
-    private void AddNewTabItems(ContextMenu menu) { menu.Items.Add(Menu("設定", _app.ShowSettings)); menu.Items.Add(Menu("アプリランチャーを新規登録", () => NewTab(LauncherTabKinds.Launcher))); menu.Items.Add(Menu("Webランチャーを新規登録", () => NewTab(LauncherTabKinds.Web))); }
+    private void AddNewTabItems(ContextMenu menu) { menu.Items.Add(Menu("アプリランチャーを新規登録", () => NewTab(LauncherTabKinds.Launcher))); menu.Items.Add(Menu("Webランチャーを新規登録", () => NewTab(LauncherTabKinds.Web))); }
     private void NewTab(string kind) { var title = kind == LauncherTabKinds.Web ? "Webランチャーの新規登録" : "アプリランチャーの新規登録"; var d = new TextPromptDialog(title, "名前") { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => { data.Tabs.Add(new LauncherTab { Name = d.Value, Kind = kind, Order = data.Tabs.Select(tab => tab.Order).DefaultIfEmpty(-1).Max() + 1 }); BuiltInTabs.Ensure(data); }); }
     private void DeleteTab(LauncherTab tab) { if (ShowDialog(() => MessageBox.Show($"App Launcher\n「{tab.Name}」を削除しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning)) == MessageBoxResult.Yes) Commit(d => { d.Tabs.Remove(d.Tabs.First(x => x.Id == tab.Id)); NormalizeTabOrders(d.Tabs); }); }
     private System.Windows.Controls.MenuItem Menu(string title, Action action) { var item = new System.Windows.Controls.MenuItem { Header = title }; item.Click += (_, _) => action(); return item; }
