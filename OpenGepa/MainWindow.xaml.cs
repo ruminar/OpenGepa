@@ -285,15 +285,9 @@ public partial class MainWindow : Window
         if (ShowDialog(open.ShowDialog) != true) return;
         var dialog = new TextPromptDialog("ショートカットを作成", "表示名", DirectoryCandidateRules.DefaultDisplayName(open.FileName)) { Owner = this };
         if (ShowDialog(dialog.ShowDialog) != true) return;
-        try
-        {
-            var shortcut = _app.ManagedShortcutService.Create(open.FileName, dialog.Value);
-            var item = new FileItem { Name = dialog.Value, Target = shortcut };
-            AddNode(item, parentId);
-            var icon = _app.IconService.TryExtract(shortcut, item.Name); if (icon is not null) SetNodeIcon(item.Id, icon);
-            OpenProperties(item);
-        }
-        catch (Exception ex) { ShowDialog(() => MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
+        if (!_app.TryCreateManagedShortcut(SelectedTabId, parentId, open.FileName, dialog.Value, out var item, out var error)) { ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); return; }
+        var icon = _app.IconService.TryExtract(item!.Target, item.Name); if (icon is not null) SetNodeIcon(item.Id, icon);
+        OpenProperties(item);
     }
     private void AddNode(LauncherNode node, string? parentId)
     {

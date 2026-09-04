@@ -195,6 +195,13 @@ public sealed class ManagedShortcutService
         WindowsMenuService.CreateLink(path, target);
         return path;
     }
+    public void Delete(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var root = _paths.ShortcutDirectory + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !fullPath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return;
+        if (File.Exists(fullPath)) File.Delete(fullPath);
+    }
 }
 
 public sealed class StoreAppsService

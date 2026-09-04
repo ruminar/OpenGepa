@@ -18,6 +18,7 @@ var tests = new (string Name, Action Run)[]
     ("Last-good recovery", TestLastGoodRecovery),
     ("Profile round trip and icon collision", TestProfileRoundTrip),
     ("Profile excludes system tabs and carries managed shortcuts", TestProfileSpecialTabExclusion),
+    ("Managed shortcut creation leaves no duplicate orphan", TestManagedShortcutCreation),
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
     ("File dialog filter", TestFileDialogFilter),
     ("Appearance settings", TestAppearanceSettings),
@@ -367,6 +368,21 @@ static void TestSiteIconHtmlCandidates()
     Equal(2, candidates.Count);
     Equal("https://www.amiami.jp/images/favicon.png", candidates[0].AbsoluteUri);
     Equal("https://www.amiami.jp/images/apple-touch-icon.png", candidates[1].AbsoluteUri);
+}
+static void TestManagedShortcutCreation()
+{
+    var path = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
+    try
+    {
+        var app = AppService.Create(path); app.Initialize(); var tab = app.Data.Tabs.Single(item => !item.IsSystemTab);
+        True(app.TryCreateManagedShortcut(tab.Id, null, Environment.ProcessPath!, "Same", out var first, out var error), error);
+        True(first is not null && File.Exists(first.Target));
+        True(!app.TryCreateManagedShortcut(tab.Id, null, Environment.ProcessPath!, "Same", out _, out error));
+        True(error.Contains("同じGroup内", StringComparison.Ordinal));
+        Equal(1, Directory.EnumerateFiles(app.Paths.ShortcutDirectory, "*.lnk").Count());
+        Equal(1, app.Data.Tabs.Single(item => item.Id == tab.Id).Children.Count);
+    }
+    finally { Directory.Delete(path, true); }
 }
 static void TestWindowIconSet()
 {

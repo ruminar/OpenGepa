@@ -224,6 +224,40 @@ public sealed class AppService
         return succeeded;
     }
 
+    /// <summary>通常ランチャーへ登録できることを検証してから管理ショートカットを作成します。</summary>
+    public bool TryCreateManagedShortcut(string tabId, string? parentId, string target, string displayName, out FileItem? item, out string error)
+    {
+        item = null;
+        try
+        {
+            var name = NameRules.Normalize(displayName);
+            if (!NameRules.IsValid(name, out error)) return false;
+            EnsureManagedShortcutDestination(Data, tabId, parentId, name);
+            var shortcut = ManagedShortcutService.Create(target, name);
+            var candidate = new FileItem { Name = name, Target = shortcut };
+            if (!TryCommit(data =>
+            {
+                var destination = EnsureManagedShortcutDestination(data, tabId, parentId, name);
+                candidate.Order = destination.Count; destination.Add(candidate);
+            }, out error))
+            {
+                ManagedShortcutService.Delete(shortcut);
+                return false;
+            }
+            item = candidate;
+            return true;
+        }
+        catch (Exception ex) { error = ex.Message; return false; }
+    }
+    private static ObservableCollection<LauncherNode> EnsureManagedShortcutDestination(OpenGepaData data, string tabId, string? parentId, string name)
+    {
+        var tab = data.Tabs.FirstOrDefault(tab => tab.Id == tabId) ?? throw new InvalidDataException("App Launcherが見つかりません。");
+        if (tab.IsSystemTab || tab.IsWebTab) throw new InvalidDataException("このタブにはショートカットを作成できません。");
+        var destination = parentId is null ? tab.Children : (FindNode(tab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("登録先Groupが見つかりません。");
+        if (destination.Any(node => NameRules.Normalize(DataValidator.NodeLabel(node)).Equals(name, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException($"同じGroup内に「{name}」が既にあります。");
+        return destination;
+    }
+
     private static string CopyBaseName(string name)
     {
         var normalized = NameRules.Normalize(name);
