@@ -419,6 +419,8 @@ static void TestLauncherReorderRules()
     var first = new LauncherTab { Name = "First", Order = 0 }; var second = new LauncherTab { Name = "Second", Order = 1 }; var third = new LauncherTab { Name = "Third", Order = 2 };
     var data = new OpenGepaData { Tabs = new ObservableCollection<LauncherTab> { first, second, third } };
     True(LauncherReorderRules.MoveTab(data, first.Id, third.Id, true)); Equal(2, first.Order); Equal(0, second.Order); Equal(1, third.Order);
+    Equal(2, LauncherReorderRules.CircularIndex(0, -1, 3)); Equal(0, LauncherReorderRules.CircularIndex(2, 1, 3));
+    Equal(0, LauncherReorderRules.CircularIndex(-1, 1, 3)); Equal(2, LauncherReorderRules.CircularIndex(-1, -1, 3));
 }
 static void TestSpecifiedBookmarkIconUrl()
 {

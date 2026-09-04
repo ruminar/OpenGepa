@@ -539,7 +539,7 @@ public partial class MainWindow : Window
     private void MoveTabSelection(int delta)
     {
         var tabs = _app.VisibleTabs; if (tabs.Count == 0) return;
-        var currentId = _app.SelectedTab?.Id; var current = currentId is null ? -1 : tabs.ToList().FindIndex(x => x.Id.Equals(currentId, StringComparison.OrdinalIgnoreCase)); var index = current < 0 ? (delta > 0 ? 0 : tabs.Count - 1) : Math.Clamp(current + delta, 0, tabs.Count - 1); var target = tabs[index];
+        var currentId = _app.SelectedTab?.Id; var current = currentId is null ? -1 : tabs.ToList().FindIndex(x => x.Id.Equals(currentId, StringComparison.OrdinalIgnoreCase)); var target = tabs[LauncherReorderRules.CircularIndex(current, delta, tabs.Count)];
         TabsList.SelectedItem = target; _app.SelectTab(target.Id);
         Dispatcher.BeginInvoke(() => { if (TabsList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem item) { item.Focus(); item.BringIntoView(); } });
     }
