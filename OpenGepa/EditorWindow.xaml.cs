@@ -216,7 +216,7 @@ public partial class EditorWindow : Window
     {
         if (e.Handled) return;
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = container?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
-        if (TryGetDroppedUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
+        if (ExternalDropRules.TryGetUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
         if (IsWebTab || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
         var paths = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop)!;
         foreach (var path in paths) { if (File.Exists(path)) AddNode(new FileItem { Name = DirectoryCandidateRules.DefaultDisplayName(path), Target = path }, true, true, destinationId, true); else if (Directory.Exists(path)) AddNode(new DirectoryItem { Target = path }, true, true, destinationId, true); }
@@ -307,7 +307,7 @@ public partial class EditorWindow : Window
         else
         {
             ClearDropInsertion();
-            if ((!IsWebTab && e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) || TryGetDroppedUrl(e.Data, out _)) { e.Effects = System.Windows.DragDropEffects.Copy; e.Handled = true; }
+            if ((!IsWebTab && e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) || ExternalDropRules.TryGetUrl(e.Data, out _)) { e.Effects = System.Windows.DragDropEffects.Copy; e.Handled = true; }
         }
     }
     private void EditorTree_DragLeave(object sender, System.Windows.DragEventArgs e) => ClearDropInsertion();
@@ -317,7 +317,7 @@ public partial class EditorWindow : Window
         if (!e.Data.GetDataPresent(NodeDragFormat))
         {
             var externalTarget = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = externalTarget?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
-            if (TryGetDroppedUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
+            if (ExternalDropRules.TryGetUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
             if (!IsWebTab && e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) && externalTarget?.DataContext is LauncherNode externalNode) SelectOnly(externalNode.Id, externalTarget);
             return;
         }
@@ -349,29 +349,6 @@ public partial class EditorWindow : Window
     {
         if (_dropAdorner is not null && _dropAdornerLayer is not null) _dropAdornerLayer.Remove(_dropAdorner);
         _dropAdorner = null; _dropAdornerLayer = null;
-    }
-    private static bool TryGetDroppedUrl(System.Windows.IDataObject data, out string url)
-    {
-        foreach (var format in new[] { System.Windows.DataFormats.UnicodeText, System.Windows.DataFormats.Text, "text/uri-list", "UniformResourceLocator", "UniformResourceLocatorW" })
-        {
-            if (!data.GetDataPresent(format)) continue;
-            var value = data.GetData(format); var text = value as string;
-            if (text is null && value is Stream stream)
-            {
-                using var copy = new MemoryStream(); stream.CopyTo(copy); text = format == "UniformResourceLocatorW" ? Encoding.Unicode.GetString(copy.ToArray()) : Encoding.UTF8.GetString(copy.ToArray());
-            }
-            if (text is null) continue;
-            var parsed = ExtractUrlFromDropText(text);
-            if (parsed is not null) { url = parsed; return true; }
-        }
-        url = ""; return false;
-    }
-    public static string? ExtractUrlFromDropText(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return null;
-        foreach (var line in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => !x.StartsWith('#')))
-            if (Uri.TryCreate(line, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)) return uri.AbsoluteUri;
-        return null;
     }
     private bool Commit(Action<OpenGepaData> action, string? tabId)
     {

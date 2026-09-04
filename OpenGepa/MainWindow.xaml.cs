@@ -145,23 +145,67 @@ public partial class MainWindow : Window
     }
     private void LauncherTree_DragOver(object sender, System.Windows.DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(TreeReorderDragFormat) || e.Data.GetData(TreeReorderDragFormat) is not string sourceId || !CanReorderTree(sourceId, FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject)?.DataContext as LauncherNode)) return;
-        e.Effects = System.Windows.DragDropEffects.Move; e.Handled = true;
+        if (e.Data.GetDataPresent(TreeReorderDragFormat) && e.Data.GetData(TreeReorderDragFormat) is string sourceId && CanReorderTree(sourceId, FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject)?.DataContext as LauncherNode))
+        {
+            e.Effects = System.Windows.DragDropEffects.Move; e.Handled = true; return;
+        }
+        if (CanAddExternalDrop(e.Data)) { e.Effects = System.Windows.DragDropEffects.Copy; e.Handled = true; }
     }
     private void LauncherTree_Drop(object sender, System.Windows.DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(TreeReorderDragFormat) || e.Data.GetData(TreeReorderDragFormat) is not string sourceId) return;
-        var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var target = container?.DataContext as LauncherNode;
-        if (!CanReorderTree(sourceId, target)) return;
-        var after = container is not null && e.GetPosition(container).Y > container.ActualHeight / 2;
-        var tabId = SelectedTabId; var targetId = target!.Id;
-        Commit(data => { var tab = data.Tabs.First(item => item.Id == tabId); var siblings = FindSiblingCollection(tab.Children, sourceId) ?? throw new InvalidDataException("移動元が見つかりません。"); LauncherReorderRules.MoveSibling(siblings, sourceId, targetId, after); });
-        e.Handled = true;
+        if (e.Data.GetDataPresent(TreeReorderDragFormat) && e.Data.GetData(TreeReorderDragFormat) is string sourceId)
+        {
+            var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var target = container?.DataContext as LauncherNode;
+            if (!CanReorderTree(sourceId, target)) return;
+            var after = container is not null && e.GetPosition(container).Y > container.ActualHeight / 2;
+            var tabId = SelectedTabId; var targetId = target!.Id;
+            Commit(data => { var tab = data.Tabs.First(item => item.Id == tabId); var siblings = FindSiblingCollection(tab.Children, sourceId) ?? throw new InvalidDataException("移動元が見つかりません。"); LauncherReorderRules.MoveSibling(siblings, sourceId, targetId, after); });
+            e.Handled = true; return;
+        }
+        if (!CanAddExternalDrop(e.Data)) return;
+        AddExternalDrop(e.Data, FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject)?.DataContext as LauncherNode); e.Handled = true;
     }
     private bool CanReorderTree(string sourceId, LauncherNode? target)
     {
         var tab = _app.SelectedTab; if (tab is null || tab.IsSystemTab || target is null || sourceId == target.Id) return false;
         return FindSiblingCollection(tab.Children, sourceId) is { } source && FindSiblingCollection(tab.Children, target.Id) is { } destination && ReferenceEquals(source, destination);
+    }
+    private bool CanAddExternalDrop(System.Windows.IDataObject data)
+    {
+        var tab = _app.SelectedTab; if (tab is null || tab.IsSystemTab) return false;
+        return ExternalDropRules.TryGetUrl(data, out _) || (!tab.IsWebTab && data.GetDataPresent(System.Windows.DataFormats.FileDrop));
+    }
+    private void AddExternalDrop(System.Windows.IDataObject data, LauncherNode? target)
+    {
+        var tab = _app.SelectedTab; if (tab is null || tab.IsSystemTab) return;
+        var destinationId = target switch { GroupNode group => group.Id, not null => FindParentGroupId(tab.Children, target.Id), _ => null };
+        if (ExternalDropRules.TryGetUrl(data, out var url)) { AddDroppedUrl(url, destinationId); return; }
+        if (tab.IsWebTab || !data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
+        var paths = (string[])data.GetData(System.Windows.DataFormats.FileDrop)!;
+        AddDroppedPaths(paths, destinationId);
+    }
+    private void AddDroppedUrl(string target, string? destinationId)
+    {
+        if (!Uri.TryCreate(target, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return;
+        var tab = _app.SelectedTab; if (tab is null) return;
+        var siblings = destinationId is null ? tab.Children : (FindNode(tab.Children, destinationId) as GroupNode)?.Children ?? [];
+        var node = new UrlItem { Name = UrlRegistrationRules.UniqueDroppedName(uri, siblings), Target = uri.AbsoluteUri }; var tabId = tab.Id;
+        if (!_app.TryCommit(data => { var current = data.Tabs.First(item => item.Id == tabId); var collection = destinationId is null ? current.Children : ((FindNode(current.Children, destinationId) as GroupNode)?.Children ?? throw new InvalidDataException("登録先Groupが見つかりません。")); node.Order = collection.Count; collection.Add(node); }, out var error)) { ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); return; }
+        _ = FetchUrlIcon(node, tabId);
+    }
+    private void AddDroppedPaths(IEnumerable<string> paths, string? destinationId)
+    {
+        var tab = _app.SelectedTab; if (tab is null) return; var tabId = tab.Id; var addedFiles = new List<FileItem>();
+        if (!_app.TryCommit(data =>
+        {
+            var current = data.Tabs.First(item => item.Id == tabId); var collection = destinationId is null ? current.Children : ((FindNode(current.Children, destinationId) as GroupNode)?.Children ?? throw new InvalidDataException("登録先Groupが見つかりません。"));
+            foreach (var path in paths)
+            {
+                if (File.Exists(path)) { var file = new FileItem { Name = UrlRegistrationRules.UniqueName(DirectoryCandidateRules.DefaultDisplayName(path), collection), Target = path, Order = collection.Count }; collection.Add(file); addedFiles.Add(file); }
+                else if (Directory.Exists(path) && !collection.OfType<DirectoryItem>().Any(item => item.Target.Equals(path, StringComparison.OrdinalIgnoreCase))) collection.Add(new DirectoryItem { Target = path, Order = collection.Count });
+            }
+        }, out var error)) { ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); return; }
+        foreach (var file in addedFiles) { var icon = _app.IconService.TryExtract(file.Target, file.Name); if (icon is not null) SetNodeIcon(file.Id, icon); }
     }
 
     private bool ShouldLaunch(LauncherNode item, int clickCount)
@@ -532,6 +576,7 @@ public partial class MainWindow : Window
     private static IEnumerable<TreeViewItem> EnumerateContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; foreach (var child in EnumerateContainers(item)) yield return child; } }
     private static IEnumerable<TreeViewItem> EnumerateVisibleContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; if (item.IsExpanded) foreach (var child in EnumerateVisibleContainers(item)) yield return child; } }
     private static LauncherNode? FindNode(IEnumerable<LauncherNode>? nodes, string id) { if (nodes is null) return null; foreach (var node in nodes) { if (node.Id == id) return node; if (node is GroupNode group) { var found = FindNode(group.Children, id); if (found is not null) return found; } } return null; }
+    private static string? FindParentGroupId(IEnumerable<LauncherNode> nodes, string id) { foreach (var group in nodes.OfType<GroupNode>()) { if (group.Children.Any(node => node.Id == id)) return group.Id; var found = FindParentGroupId(group.Children, id); if (found is not null) return found; } return null; }
     private static ObservableCollection<LauncherNode>? FindSiblingCollection(ObservableCollection<LauncherNode> nodes, string id) { if (nodes.Any(node => node.Id == id)) return nodes; foreach (var group in nodes.OfType<GroupNode>()) { var found = FindSiblingCollection(group.Children, id); if (found is not null) return found; } return null; }
     private static bool RemoveNode(ObservableCollection<LauncherNode> nodes, string id) { var item = nodes.FirstOrDefault(x => x.Id == id); if (item is not null) return nodes.Remove(item); return nodes.OfType<GroupNode>().Any(group => RemoveNode(group.Children, id)); }
     private static void NormalizeOrders(ObservableCollection<LauncherNode> nodes) { for (var i = 0; i < nodes.Count; i++) { nodes[i].Order = i; if (nodes[i] is GroupNode group) NormalizeOrders(group.Children); } }

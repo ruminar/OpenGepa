@@ -63,6 +63,8 @@ TreeView上で`Shift`または`Ctrl`を押してマウスクリックした場�
 
 右側の縦タブでは`Ctrl`を押しながらドラッグすると、通常タブおよびシステムタブを含む表示順を変更できる。通常アプリランチャーおよびWeb専用タブのTreeViewでは、`Ctrl`を押しながらドラッグすると、Group、FileItem、DirectoryItem、UrlItemを同じ親Group内でのみ並び替えできる。別Groupへの移動、階層変更、複数項目の移動は編集画面で行う。Windows Menu、ストアアプリ、主要操作プリセットのTreeView内容は並び替えできない。
 
+通常アプリランチャーおよびWeb専用タブのメインTreeViewは、外部からのドラッグ＆ドロップで項目を追加できる。Group上へドロップした場合はその配下、それ以外はルートへ追加する。通常アプリランチャーは既存ファイルをFileItem、既存ディレクトリをDirectoryItem、HTTP(S) URLをUrlItemとして受け付ける。Web専用タブはHTTP(S) URLだけを受け付ける。ファイル項目の同名は`_1`、`_2`、…で自動回避し、既存と同じDirectory参照は追加しない。Windows Menu、ストアアプリ、主要操作プリセットは外部ドロップを受け付けない。
+
 ## 5. Windows Menuタブ
 
 ### 5.1 正本と表示

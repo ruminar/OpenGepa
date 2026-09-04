@@ -33,6 +33,7 @@ var tests = new (string Name, Action Run)[]
     ("Editor expansion persistence", TestEditorExpansionPersistence),
     ("Tree range selection", TestTreeRangeSelection),
     ("Browser URL drop text", TestBrowserUrlDropText),
+    ("Browser URL data transfer", TestBrowserUrlDataTransfer),
     ("URL registration names", TestUrlRegistrationNames),
     ("Site icon HTML candidates", TestSiteIconHtmlCandidates),
     ("Specified bookmark icon URL resolves relative paths", TestSpecifiedBookmarkIconUrl),
@@ -345,10 +346,16 @@ static void TestTreeRangeSelection()
 
 static void TestBrowserUrlDropText()
 {
-    Equal("https://example.com/path?q=1", EditorWindow.ExtractUrlFromDropText("# browser URL\r\nhttps://example.com/path?q=1\r\n")!);
-    Equal("http://example.com/", EditorWindow.ExtractUrlFromDropText("not a URL\nhttp://example.com")!);
-    True(EditorWindow.ExtractUrlFromDropText("file:///C:/tool.exe") is null);
-    True(EditorWindow.ExtractUrlFromDropText("javascript:alert(1)") is null);
+    Equal("https://example.com/path?q=1", ExternalDropRules.ExtractUrlFromText("# browser URL\r\nhttps://example.com/path?q=1\r\n")!);
+    Equal("http://example.com/", ExternalDropRules.ExtractUrlFromText("not a URL\nhttp://example.com")!);
+    True(ExternalDropRules.ExtractUrlFromText("file:///C:/tool.exe") is null);
+    True(ExternalDropRules.ExtractUrlFromText("javascript:alert(1)") is null);
+}
+static void TestBrowserUrlDataTransfer()
+{
+    var data = new System.Windows.DataObject(System.Windows.DataFormats.UnicodeText, "https://example.com/from-browser");
+    True(ExternalDropRules.TryGetUrl(data, out var url));
+    Equal("https://example.com/from-browser", url);
 }
 static void TestUrlRegistrationNames()
 {
