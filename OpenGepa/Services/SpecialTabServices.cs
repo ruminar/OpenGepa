@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Win32;
 using OpenGepa.Models;
 
 namespace OpenGepa.Services;
@@ -237,9 +238,11 @@ public sealed class StoreAppsService
 
     public string? FindNvidiaControlPanelAumid()
     {
-        var source = _last.Count == 0 ? Enumerate() : _last;
-        return source.FirstOrDefault(item => item.Name.Contains("NVIDIA Control Panel", StringComparison.OrdinalIgnoreCase) || item.Name.Contains("NVIDIA コントロール パネル", StringComparison.OrdinalIgnoreCase))?.Aumid;
+        return FindAumid("NVIDIA Control Panel", "NVIDIA コントロール パネル");
     }
+
+    public string? FindAumid(params string[] nameFragments) => FindAumid(_last.Count == 0 ? Enumerate() : _last, nameFragments);
+    public static string? FindAumid(IEnumerable<StoreAppEntry> source, params string[] nameFragments) => source.FirstOrDefault(item => nameFragments.Any(fragment => item.Name.Contains(fragment, StringComparison.OrdinalIgnoreCase)))?.Aumid;
 
     public static async Task<(bool Success, string Error)> LaunchAsync(string aumid)
     {
@@ -295,6 +298,39 @@ public sealed class StoreAppsService
 
 public sealed record StoreAppEntry(string Name, string Aumid);
 
+public static class RegisteredApplicationResolver
+{
+    private const string AppPathsKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths";
+
+    public static string? FindExecutable(params string[] executableNames)
+    {
+        foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        foreach (var name in executableNames)
+        {
+            try
+            {
+                using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                using var key = baseKey.OpenSubKey($"{AppPathsKey}\\{name}");
+                if (key?.GetValue(null) is not string value) continue;
+                var path = NormalizeExecutablePath(value, name);
+                if (path is not null) return path;
+            }
+            catch { }
+        }
+        return null;
+    }
+
+    private static string? NormalizeExecutablePath(string value, string executableName)
+    {
+        var expanded = Environment.ExpandEnvironmentVariables(value.Trim());
+        var index = expanded.IndexOf(executableName, StringComparison.OrdinalIgnoreCase);
+        if (index < 0) return null;
+        var path = expanded[..(index + executableName.Length)].Trim().Trim('"');
+        return Path.IsPathFullyQualified(path) && File.Exists(path) ? path : null;
+    }
+}
+
 public sealed class PresetService
 {
     private readonly StoreAppsService _storeApps;
@@ -322,10 +358,17 @@ public sealed class PresetService
         if (definition is null) return (false, "主要操作プリセットが見つかりません。");
         try
         {
-            if (definition.Id == "nvidia-control-panel")
+            var aumid = FindGpuAumid(definition.Id);
+            if (aumid is not null)
             {
-                var aumid = _storeApps.FindNvidiaControlPanelAumid();
-                return aumid is null ? (false, "NVIDIA コントロール パネルが見つかりません。") : await StoreAppsService.LaunchAsync(aumid);
+                return await StoreAppsService.LaunchAsync(aumid);
+            }
+            if (definition.Id == "amd-software")
+            {
+                var path = FindAmdSoftwarePath();
+                if (path is null) return (false, "AMD Software が見つかりません。");
+                await Task.Run(() => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }));
+                return (true, string.Empty);
             }
             await Task.Run(() => Process.Start(new ProcessStartInfo(definition.FileName, definition.Arguments)
             { UseShellExecute = true, Verb = definition.RunAsAdmin ? "runas" : string.Empty }));
@@ -336,19 +379,21 @@ public sealed class PresetService
 
     private bool IsAvailable(PresetDefinition item) => item.Id switch
     {
-        "nvidia-control-panel" => _storeApps.FindNvidiaControlPanelAumid() is not null,
+        "nvidia-control-panel" or "intel-graphics-command-center" or "intel-arc-control" => FindGpuAumid(item.Id) is not null,
+        "amd-software" => FindAmdSoftwarePath() is not null,
         "local-group-policy" => File.Exists(Path.Combine(Environment.SystemDirectory, "gpedit.msc")),
         _ => true
     };
 
     private string? IconSource(PresetDefinition item)
     {
-        if (item.Id == "nvidia-control-panel")
+        var aumid = FindGpuAumid(item.Id);
+        if (aumid is not null)
         {
-            var aumid = _storeApps.FindNvidiaControlPanelAumid();
-            return aumid is null ? null : $"shell:AppsFolder\\{aumid}";
+            return $"shell:AppsFolder\\{aumid}";
         }
-        if (item.Id is "settings" or "search" or "installed-apps" or "default-apps" or "system" or "windows-update")
+        if (item.Id == "amd-software") return FindAmdSoftwarePath();
+        if (item.Id is "settings" or "search" or "installed-apps" or "default-apps" or "system" or "windows-update" or "mouse-settings" or "display-settings" or "bluetooth-settings" or "printers-settings")
             return "shell:AppsFolder\\windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
         if (item.Id == "microsoft-store") return "shell:AppsFolder\\Microsoft.WindowsStore_8wekyb3d8bbwe!App";
         if (item.Id == "windows-security") return "shell:AppsFolder\\Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI";
@@ -359,12 +404,22 @@ public sealed class PresetService
         return File.Exists(systemPath) ? systemPath : item.FileName;
     }
 
+    private string? FindGpuAumid(string id) => id switch
+    {
+        "nvidia-control-panel" => _storeApps.FindNvidiaControlPanelAumid(),
+        "intel-graphics-command-center" => _storeApps.FindAumid("Intel Graphics Command Center", "Intel® Graphics Command Center", "インテル® グラフィックス・コマンド・センター"),
+        "intel-arc-control" => _storeApps.FindAumid("Intel Arc Control", "インテル Arc Control"),
+        _ => null
+    };
+    private static string? FindAmdSoftwarePath() => RegisteredApplicationResolver.FindExecutable("RadeonSoftware.exe", "AMDSoftware.exe");
+
     private static readonly IReadOnlyList<PresetDefinition> Catalog =
     [
         P("settings", "基本", 10, "設定", "ms-settings:"), P("search", "基本", 20, "検索", "ms-settings:search"), P("run", "基本", 30, "ファイル名を指定して実行", "explorer.exe", "shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}"), P("explorer", "基本", 40, "エクスプローラー", "explorer.exe"), P("desktop", "基本", 50, "デスクトップ", "explorer.exe", "shell:Desktop"),
-        P("documents", "ファイルと個人用", 110, "ドキュメント", "explorer.exe", "shell:Personal"), P("pictures", "ファイルと個人用", 120, "ピクチャ", "explorer.exe", "shell:My Pictures"), P("music", "ファイルと個人用", 130, "ミュージック", "explorer.exe", "shell:My Music"), P("recent", "ファイルと個人用", 140, "最近使った項目", "explorer.exe", "shell:Recent"), P("this-pc", "ファイルと個人用", 150, "PC", "explorer.exe", "shell:MyComputerFolder"), P("explorer-options", "ファイルと個人用", 160, "エクスプローラーのオプション", "control.exe", "folders"),
-        P("installed-apps", "アプリ", 210, "インストールされているアプリ", "ms-settings:appsfeatures"), P("default-apps", "アプリ", 220, "既定のアプリ", "ms-settings:defaultapps"), P("programs-features", "アプリ", 230, "プログラムと機能", "appwiz.cpl"), P("windows-features", "アプリ", 240, "Windows の機能", "OptionalFeatures.exe"), P("microsoft-store", "アプリ", 250, "Microsoft Store", "ms-windows-store:"), P("nvidia-control-panel", "アプリ", 260, "NVIDIA コントロール パネル", ""),
-        P("system", "システムとデバイス", 310, "システム", "ms-settings:about"), P("system-properties", "システムとデバイス", 320, "システムのプロパティ", "sysdm.cpl"), P("power-options", "システムとデバイス", 330, "電源オプション", "powercfg.cpl"), P("mobility-center", "システムとデバイス", 340, "モビリティ センター", "mblctr.exe"), P("device-manager", "システムとデバイス", 350, "デバイス マネージャー", "devmgmt.msc"), P("disk-management", "システムとデバイス", 360, "ディスクの管理", "diskmgmt.msc"), P("computer-management", "システムとデバイス", 370, "コンピューターの管理", "compmgmt.msc"),
+        P("documents", "ファイルと個人用", 110, "ドキュメント", "explorer.exe", "shell:Personal"), P("pictures", "ファイルと個人用", 120, "ピクチャ", "explorer.exe", "shell:My Pictures"), P("music", "ファイルと個人用", 130, "ミュージック", "explorer.exe", "shell:My Music"), P("recent", "ファイルと個人用", 140, "最近使った項目", "explorer.exe", "shell:Recent"), P("this-pc", "ファイルと個人用", 150, "PC", "explorer.exe", "shell:MyComputerFolder"), P("explorer-options", "ファイルと個人用", 160, "エクスプローラーのオプション", "control.exe", "folders"), P("recycle-bin", "ファイルと個人用", 170, "ゴミ箱を開く", "explorer.exe", "shell:RecycleBinFolder"),
+        P("installed-apps", "アプリ", 210, "インストールされているアプリ", "ms-settings:appsfeatures"), P("default-apps", "アプリ", 220, "既定のアプリ", "ms-settings:defaultapps"), P("programs-features", "アプリ", 230, "プログラムと機能", "appwiz.cpl"), P("windows-features", "アプリ", 240, "Windows の機能", "OptionalFeatures.exe"), P("microsoft-store", "アプリ", 250, "Microsoft Store", "ms-windows-store:"),
+        P("nvidia-control-panel", "GPU 管理", 270, "NVIDIA コントロール パネル", ""), P("amd-software", "GPU 管理", 280, "AMD Software: Adrenalin Edition", ""), P("intel-graphics-command-center", "GPU 管理", 290, "Intel Graphics Command Center", ""), P("intel-arc-control", "GPU 管理", 300, "Intel Arc Control", ""),
+        P("system", "システムとデバイス", 310, "システム", "ms-settings:about"), P("system-properties", "システムとデバイス", 320, "システムのプロパティ", "sysdm.cpl"), P("power-options", "システムとデバイス", 330, "電源オプション", "powercfg.cpl"), P("mobility-center", "システムとデバイス", 340, "モビリティ センター", "mblctr.exe"), P("device-manager", "システムとデバイス", 350, "デバイス マネージャー", "devmgmt.msc"), P("disk-management", "システムとデバイス", 360, "ディスクの管理", "diskmgmt.msc"), P("computer-management", "システムとデバイス", 370, "コンピューターの管理", "compmgmt.msc"), P("mouse-settings", "システムとデバイス", 380, "マウスの設定", "ms-settings:mousetouchpad"), P("display-settings", "システムとデバイス", 390, "ディスプレイの設定", "ms-settings:display"), P("bluetooth-settings", "システムとデバイス", 400, "Bluetooth とデバイス", "ms-settings:bluetooth"), P("printers-settings", "システムとデバイス", 410, "プリンターとスキャナー", "ms-settings:printers"),
         P("network-connections", "ネットワーク", 410, "ネットワーク接続", "ncpa.cpl"), P("network-sharing-center", "ネットワーク", 420, "ネットワークと共有センター", "control.exe", "/name Microsoft.NetworkAndSharingCenter"), P("internet-options", "ネットワーク", 430, "インターネットのプロパティ", "inetcpl.cpl"), P("remote-desktop", "ネットワーク", 440, "リモート デスクトップ", "mstsc.exe"),
         P("event-viewer", "管理と診断", 510, "イベント ビューアー", "eventvwr.msc"), P("task-manager", "管理と診断", 520, "タスク マネージャー", "taskmgr.exe"), P("terminal", "管理と診断", 530, "ターミナル", "wt.exe"), P("terminal-admin", "管理と診断", 540, "ターミナル（管理者）", "wt.exe", "", true), P("system-config", "管理と診断", 550, "システム構成", "msconfig.exe"), P("services", "管理と診断", 560, "サービス", "services.msc"), P("task-scheduler", "管理と診断", 570, "タスク スケジューラ", "taskschd.msc"), P("resource-monitor", "管理と診断", 580, "リソース モニター", "resmon.exe"), P("performance-monitor", "管理と診断", 590, "パフォーマンス モニター", "perfmon.msc"), P("cert-current-user", "管理と診断", 600, "証明書（現在のユーザー）", "certmgr.msc"), P("cert-local-machine", "管理と診断", 610, "証明書（ローカル コンピューター）", "certlm.msc"), P("local-group-policy", "管理と診断", 620, "ローカル グループ ポリシー エディター", "gpedit.msc"), P("registry-editor", "管理と診断", 630, "レジストリ エディター", "regedit.exe"),
         P("windows-security", "セキュリティと更新", 710, "Windows セキュリティ", "windowsdefender:"), P("credential-manager", "セキュリティと更新", 720, "資格情報マネージャー", "control.exe", "/name Microsoft.CredentialManager"), P("windows-update", "セキュリティと更新", 730, "Windows Update", "ms-settings:windowsupdate"), P("firewall-advanced", "セキュリティと更新", 740, "Windows Defender ファイアウォール（詳細設定）", "wf.msc"),

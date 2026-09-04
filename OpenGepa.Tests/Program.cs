@@ -41,6 +41,7 @@ var tests = new (string Name, Action Run)[]
     ("Built-in tab visibility and order are preserved", TestBuiltInTabPresentation),
     ("Web launcher accepts only URLs", TestWebLauncherRestriction),
     ("Store app grouping keeps same initial together", TestStoreAppGrouping),
+    ("GPU store app detection supports multiple vendors", TestGpuStoreAppDetection),
     ("Windows Menu merges current-user shortcuts first", TestWindowsMenuMerge),
     ("Bookmark HTML imports atomically into timestamp root", TestBookmarkImport),
     ("Default data seeds only an absent configuration", TestDefaultDataSeeding),
@@ -477,6 +478,18 @@ static void TestStoreAppGrouping()
     Equal(1, groups.Count); True(groups[0] is GroupNode { Name: "A", Children.Count: 21 });
     var split = StoreAppsService.BuildGroups(Enumerable.Range(1, 15).Select(index => new StoreAppEntry($"A{index:D2}", $"A{index}!App")).Append(new StoreAppEntry("B01", "B!App")));
     Equal(2, split.Count); True(split[0] is GroupNode { Name: "A", Children.Count: 15 }); True(split[1] is GroupNode { Name: "B", Children.Count: 1 });
+}
+static void TestGpuStoreAppDetection()
+{
+    var apps = new[]
+    {
+        new StoreAppEntry("NVIDIA Control Panel", "Nvidia!ControlPanel"),
+        new StoreAppEntry("Intel Graphics Command Center", "Intel!Graphics"),
+        new StoreAppEntry("Intel Arc Control", "Intel!Arc")
+    };
+    Equal("Nvidia!ControlPanel", StoreAppsService.FindAumid(apps, "NVIDIA Control Panel")!);
+    Equal("Intel!Graphics", StoreAppsService.FindAumid(apps, "Intel Graphics Command Center")!);
+    Equal("Intel!Arc", StoreAppsService.FindAumid(apps, "Intel Arc Control")!);
 }
 
 static void TestWindowsMenuMerge()
