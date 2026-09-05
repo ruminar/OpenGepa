@@ -33,7 +33,7 @@ public partial class SettingsWindow : Window
         FileItemClickCombo.SelectedValue = _app.Data.ItemLaunch.FileItemClickCount.ToString(); DirectoryItemClickCombo.SelectedValue = _app.Data.ItemLaunch.DirectoryItemClickCount.ToString(); UrlItemClickCombo.SelectedValue = _app.Data.ItemLaunch.UrlItemClickCount.ToString();
         WindowsMenuCurrentEditCheck.IsChecked = _app.Data.WindowsMenu.AllowCurrentUserEdit; WindowsMenuAllUsersEditCheck.IsChecked = _app.Data.WindowsMenu.AllowAllUsersEdit;
         FoldersFirstRadio.IsChecked = _app.Data.WindowsMenu.FoldersFirst; ShortcutsFirstRadio.IsChecked = !_app.Data.WindowsMenu.FoldersFirst;
-        PresetItemsList.ItemsSource = _app.PresetService.AvailableDefinitions().Select(item => new PresetVisibilityRow { Id = item.Id, Name = $"{item.Group} / {item.Name}", IsVisible = !_app.Data.Presets.HiddenItemIds.Contains(item.Id) }).ToList();
+        PresetItemsList.ItemsSource = _app.PresetService.AvailableDefinitions().Select(item => new PresetVisibilityRow { Id = item.Id, Name = $"{item.Group.Replace("/", " / ")} / {item.Name}", IsVisible = !_app.Data.Presets.HiddenItemIds.Contains(item.Id) }).ToList();
         _refreshing = false; UpdateMoveButtons();
         if (restoreFocus && TabsList.SelectedItem is LauncherTab selected)
             Dispatcher.BeginInvoke(() => { if (TabsList.ItemContainerGenerator.ContainerFromItem(selected) is System.Windows.Controls.ListBoxItem item) item.Focus(); }, System.Windows.Threading.DispatcherPriority.Input);

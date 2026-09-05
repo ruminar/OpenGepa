@@ -211,6 +211,9 @@ public sealed class StoreAppsService
     private static readonly CultureInfo Culture = CultureInfo.GetCultureInfo("ja-JP");
     private IReadOnlyList<StoreAppEntry> _last = [];
 
+    public StoreAppsService() { }
+    public StoreAppsService(IEnumerable<StoreAppEntry> initialApps) => _last = initialApps.ToList();
+
     public ObservableCollection<LauncherNode> Load(bool refresh = false)
     {
         if (refresh || _last.Count == 0) _last = Enumerate();
@@ -339,13 +342,10 @@ public sealed class PresetService
     public ObservableCollection<LauncherNode> Load(PresetSettings settings)
     {
         var result = new ObservableCollection<LauncherNode>();
-        foreach (var group in Catalog.GroupBy(item => item.Group).OrderBy(group => group.Min(item => item.Order)))
+        foreach (var item in Catalog.Where(item => !settings.HiddenItemIds.Contains(item.Id) && IsAvailable(item)).OrderBy(item => item.Order))
         {
-            var visible = group.Where(item => !settings.HiddenItemIds.Contains(item.Id) && IsAvailable(item)).OrderBy(item => item.Order).ToList();
-            if (visible.Count == 0) continue;
-            var node = new GroupNode { Id = RuntimeNodeIds.Create("preset-group:" + group.Key), Name = group.Key, Order = result.Count };
-            foreach (var item in visible) node.Children.Add(new PresetItem { Id = RuntimeNodeIds.Create("preset:" + item.Id), PresetId = item.Id, Name = item.Name, IconSource = IconSource(item), RequiresConfirmation = item.RequiresConfirmation, Order = node.Children.Count });
-            result.Add(node);
+            var destination = EnsureGroupPath(result, item.Group);
+            destination.Add(new PresetItem { Id = RuntimeNodeIds.Create("preset:" + item.Id), PresetId = item.Id, Name = item.Name, IconSource = IconSource(item), RequiresConfirmation = item.RequiresConfirmation, Order = destination.Count });
         }
         return result;
     }
@@ -358,6 +358,7 @@ public sealed class PresetService
         if (definition is null) return (false, "主要操作プリセットが見つかりません。");
         try
         {
+            if (MediaKeyService.TrySend(definition.Id)) return (true, string.Empty);
             var aumid = FindGpuAumid(definition.Id);
             if (aumid is not null)
             {
@@ -412,6 +413,18 @@ public sealed class PresetService
         _ => null
     };
     private static string? FindAmdSoftwarePath() => RegisteredApplicationResolver.FindExecutable("RadeonSoftware.exe", "AMDSoftware.exe");
+    private static ObservableCollection<LauncherNode> EnsureGroupPath(ObservableCollection<LauncherNode> root, string path)
+    {
+        var current = root; var key = "";
+        foreach (var name in path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            key = key.Length == 0 ? name : key + "/" + name;
+            var group = current.OfType<GroupNode>().FirstOrDefault(node => node.Name.Equals(name, StringComparison.Ordinal));
+            if (group is null) { group = new GroupNode { Id = RuntimeNodeIds.Create("preset-group:" + key), Name = name, Order = current.Count }; current.Add(group); }
+            current = group.Children;
+        }
+        return current;
+    }
 
     private static readonly IReadOnlyList<PresetDefinition> Catalog =
     [
@@ -424,6 +437,7 @@ public sealed class PresetService
         P("event-viewer", "管理と診断", 510, "イベント ビューアー", "eventvwr.msc"), P("task-manager", "管理と診断", 520, "タスク マネージャー", "taskmgr.exe"), P("terminal", "管理と診断", 530, "ターミナル", "wt.exe"), P("terminal-admin", "管理と診断", 540, "ターミナル（管理者）", "wt.exe", "", true), P("system-config", "管理と診断", 550, "システム構成", "msconfig.exe"), P("services", "管理と診断", 560, "サービス", "services.msc"), P("task-scheduler", "管理と診断", 570, "タスク スケジューラ", "taskschd.msc"), P("resource-monitor", "管理と診断", 580, "リソース モニター", "resmon.exe"), P("performance-monitor", "管理と診断", 590, "パフォーマンス モニター", "perfmon.msc"), P("cert-current-user", "管理と診断", 600, "証明書（現在のユーザー）", "certmgr.msc"), P("cert-local-machine", "管理と診断", 610, "証明書（ローカル コンピューター）", "certlm.msc"), P("local-group-policy", "管理と診断", 620, "ローカル グループ ポリシー エディター", "gpedit.msc"), P("registry-editor", "管理と診断", 630, "レジストリ エディター", "regedit.exe"),
         P("windows-security", "セキュリティと更新", 710, "Windows セキュリティ", "windowsdefender:"), P("credential-manager", "セキュリティと更新", 720, "資格情報マネージャー", "control.exe", "/name Microsoft.CredentialManager"), P("windows-update", "セキュリティと更新", 730, "Windows Update", "ms-settings:windowsupdate"), P("firewall-advanced", "セキュリティと更新", 740, "Windows Defender ファイアウォール（詳細設定）", "wf.msc"),
         P("lock", "電源とセッション", 810, "ロック", "rundll32.exe", "user32.dll,LockWorkStation", false, true), P("sign-out", "電源とセッション", 820, "サインアウト", "shutdown.exe", "/l", false, true), P("sleep", "電源とセッション", 830, "スリープ", "rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0", false, true), P("shutdown", "電源とセッション", 840, "シャットダウン", "shutdown.exe", "/s /t 0", false, true), P("restart", "電源とセッション", 850, "再起動", "shutdown.exe", "/r /t 0", false, true),
+        P("media-previous", "メディア コントロール", 860, "前の曲", ""), P("media-play-pause", "メディア コントロール", 870, "再生／一時停止", ""), P("media-next", "メディア コントロール", 880, "次の曲", ""), P("media-stop", "メディア コントロール", 890, "停止", ""), P("media-volume-down", "メディア コントロール/音量", 910, "音量を下げる", ""), P("media-volume-up", "メディア コントロール/音量", 920, "音量を上げる", ""), P("media-volume-mute", "メディア コントロール/音量", 930, "ミュート切替", ""),
     ];
 
     private static PresetDefinition P(string id, string group, int order, string name, string file, string arguments = "", bool runAsAdmin = false, bool requiresConfirmation = false) => new(id, group, order, name, file, arguments, runAsAdmin, requiresConfirmation);

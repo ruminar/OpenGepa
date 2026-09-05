@@ -42,6 +42,8 @@ var tests = new (string Name, Action Run)[]
     ("Web launcher accepts only URLs", TestWebLauncherRestriction),
     ("Store app grouping keeps same initial together", TestStoreAppGrouping),
     ("GPU store app detection supports multiple vendors", TestGpuStoreAppDetection),
+    ("Media key presets use global media virtual keys", TestMediaKeyPresets),
+    ("Media presets create a nested volume group", TestMediaPresetHierarchy),
     ("Windows Menu merges current-user shortcuts first", TestWindowsMenuMerge),
     ("Bookmark HTML imports atomically into timestamp root", TestBookmarkImport),
     ("Default data seeds only an absent configuration", TestDefaultDataSeeding),
@@ -490,6 +492,25 @@ static void TestGpuStoreAppDetection()
     Equal("Nvidia!ControlPanel", StoreAppsService.FindAumid(apps, "NVIDIA Control Panel")!);
     Equal("Intel!Graphics", StoreAppsService.FindAumid(apps, "Intel Graphics Command Center")!);
     Equal("Intel!Arc", StoreAppsService.FindAumid(apps, "Intel Arc Control")!);
+}
+static void TestMediaKeyPresets()
+{
+    True(MediaKeyService.TryGetVirtualKey("media-previous", out var previous)); Equal((byte)0xB1, previous);
+    True(MediaKeyService.TryGetVirtualKey("media-play-pause", out var playPause)); Equal((byte)0xB3, playPause);
+    True(MediaKeyService.TryGetVirtualKey("media-next", out var next)); Equal((byte)0xB0, next);
+    True(MediaKeyService.TryGetVirtualKey("media-stop", out var stop)); Equal((byte)0xB2, stop);
+    True(MediaKeyService.TryGetVirtualKey("media-volume-down", out var down)); Equal((byte)0xAE, down);
+    True(MediaKeyService.TryGetVirtualKey("media-volume-up", out var up)); Equal((byte)0xAF, up);
+    True(MediaKeyService.TryGetVirtualKey("media-volume-mute", out var mute)); Equal((byte)0xAD, mute);
+    True(!MediaKeyService.TryGetVirtualKey("unknown", out _));
+}
+static void TestMediaPresetHierarchy()
+{
+    var service = new PresetService(new StoreAppsService([new StoreAppEntry("Placeholder", "Placeholder!App")]));
+    var media = service.Load(new PresetSettings()).OfType<GroupNode>().Single(group => group.Name == "メディア コントロール");
+    True(media.Children.OfType<PresetItem>().Select(item => item.PresetId).SequenceEqual(["media-previous", "media-play-pause", "media-next", "media-stop"]));
+    var volume = media.Children.OfType<GroupNode>().Single(group => group.Name == "音量");
+    True(volume.Children.OfType<PresetItem>().Select(item => item.PresetId).SequenceEqual(["media-volume-down", "media-volume-up", "media-volume-mute"]));
 }
 
 static void TestWindowsMenuMerge()
