@@ -383,7 +383,7 @@ public sealed class PresetService
         foreach (var item in Catalog.Where(item => !settings.HiddenItemIds.Contains(item.Id) && IsAvailable(item)).OrderBy(item => item.Order))
         {
             var destination = EnsureGroupPath(result, item.Group);
-            destination.Add(new PresetItem { Id = RuntimeNodeIds.Create("preset:" + item.Id), PresetId = item.Id, Name = item.Name, IconSource = IconSource(item), RequiresConfirmation = item.RequiresConfirmation, Order = destination.Count });
+            destination.Add(new PresetItem { Id = RuntimeNodeIds.Create("preset:" + item.Id), PresetId = item.Id, Name = item.Name, Icon = PresetIcon(item.Id), IconSource = IconSource(item), RequiresConfirmation = item.RequiresConfirmation, Order = destination.Count });
         }
         return result;
     }
@@ -451,6 +451,17 @@ public sealed class PresetService
         _ => null
     };
     private static string? FindAmdSoftwarePath() => RegisteredApplicationResolver.FindExecutable("RadeonSoftware.exe", "AMDSoftware.exe");
+    private static string? PresetIcon(string id) => id switch
+    {
+        "media-previous" => "iconSet/mediaPrevious.png",
+        "media-play-pause" => "iconSet/mediaPlayPause.png",
+        "media-next" => "iconSet/mediaNext.png",
+        "media-stop" => "iconSet/mediaStop.png",
+        "media-volume-down" => "iconSet/volumeDown.png",
+        "media-volume-up" => "iconSet/volumeUp.png",
+        "media-volume-mute" => "iconSet/volumeMute.png",
+        _ => null
+    };
     private static ObservableCollection<LauncherNode> EnsureGroupPath(ObservableCollection<LauncherNode> root, string path)
     {
         var current = root; var key = "";

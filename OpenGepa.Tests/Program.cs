@@ -511,8 +511,10 @@ static void TestMediaPresetHierarchy()
     var service = new PresetService(new StoreAppsService([new StoreAppEntry("Placeholder", "Placeholder!App")]));
     var media = service.Load(new PresetSettings()).OfType<GroupNode>().Single(group => group.Name == "メディア コントロール");
     True(media.Children.OfType<PresetItem>().Select(item => item.PresetId).SequenceEqual(["media-previous", "media-play-pause", "media-next", "media-stop"]));
+    True(media.Children.OfType<PresetItem>().Select(item => item.Icon).SequenceEqual(["iconSet/mediaPrevious.png", "iconSet/mediaPlayPause.png", "iconSet/mediaNext.png", "iconSet/mediaStop.png"]));
     var volume = media.Children.OfType<GroupNode>().Single(group => group.Name == "音量");
     True(volume.Children.OfType<PresetItem>().Select(item => item.PresetId).SequenceEqual(["media-volume-down", "media-volume-up", "media-volume-mute"]));
+    True(volume.Children.OfType<PresetItem>().Select(item => item.Icon).SequenceEqual(["iconSet/volumeDown.png", "iconSet/volumeUp.png", "iconSet/volumeMute.png"]));
 }
 static void TestStoreAppRefreshCache()
 {
