@@ -48,10 +48,11 @@ public sealed class DataValidator
     {
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion)
             throw new InvalidDataException($"未対応のformatVersionです: {data.FormatVersion}");
-        if (data.WindowsMenu is null || data.Presets is null) throw new InvalidDataException("Windows機能の設定がありません。");
+        if (data.WindowsMenu is null || data.Presets is null || data.LauncherWindow is null) throw new InvalidDataException("ランチャー設定がありません。");
         if (data.Presets.HiddenItemIds is null || data.Presets.HiddenItemIds.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("プリセットの表示設定が不正です。");
         AppearanceRules.Validate(data.Appearance);
         ValidateItemLaunch(data.ItemLaunch);
+        ValidateLauncherWindow(data.LauncherWindow);
         ValidateDefaultIcons(data.DefaultIcons);
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ValidateNames(data.Tabs.Where(x => !x.IsSystemTab).Select(x => x.Name), "LauncherTab");
@@ -129,6 +130,12 @@ public sealed class DataValidator
         if (settings.FileItemClickCount is not (1 or 2) || settings.DirectoryItemClickCount is not (1 or 2) || settings.UrlItemClickCount is not (1 or 2))
             throw new InvalidDataException("項目の起動クリック数は1または2で指定してください。");
     }
+    private static void ValidateLauncherWindow(LauncherWindowSettings settings)
+    {
+        settings.PositionMode = NameRules.Normalize(settings.PositionMode).ToLowerInvariant();
+        if (settings.PositionMode is not LauncherWindowSettings.Cursor and not LauncherWindowSettings.Session)
+            throw new InvalidDataException("ランチャー表示位置の設定が不正です。");
+    }
     private static void ValidateIcon(string? icon, string name)
     {
         if (icon is null) return;
@@ -185,7 +192,6 @@ public sealed class DataStore
         if (File.Exists(_paths.DataFile)) File.Replace(_paths.TemporaryFile, _paths.DataFile, _paths.BackupFile, true);
         else File.Move(_paths.TemporaryFile, _paths.DataFile);
     }
-
     /// <summary>UIの一時的な状態変更向け。既に読み込み済みのデータを再検証せず、同じ原子的置換で保存します。</summary>
     public void SaveWithoutValidation(OpenGepaData data)
     {
@@ -234,6 +240,7 @@ public sealed class DataStore
         data.Tabs ??= [];
         data.WindowsMenu ??= new WindowsMenuSettings();
         data.Presets ??= new PresetSettings();
+        data.LauncherWindow ??= new LauncherWindowSettings();
         data.Presets.HiddenItemIds ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var tab in data.Tabs) if (string.IsNullOrWhiteSpace(tab.Kind)) tab.Kind = LauncherTabKinds.Launcher;
         BuiltInTabs.Ensure(data);

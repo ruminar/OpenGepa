@@ -23,6 +23,7 @@ var tests = new (string Name, Action Run)[]
     ("File dialog filter", TestFileDialogFilter),
     ("Appearance settings", TestAppearanceSettings),
     ("Item launch click defaults", TestItemLaunchClickDefaults),
+    ("Launcher position mode stays local", TestLauncherPositionMode),
     ("Modified clicks do not launch items", TestModifiedClickRules),
     ("Launcher reorder keeps scope", TestLauncherReorderRules),
     ("Launcher tab duplication", TestLauncherTabDuplication),
@@ -322,7 +323,7 @@ static void TestEditorExpansionPersistence()
             var app = AppService.Create(path); app.Initialize();
             var group = new GroupNode { Name = "Open" }; group.Children.Add(new FileItem { Name = "Tool.exe", Target = "C:\\Tools\\Tool.exe" });
             var tab = new LauncherTab { Name = "Editor", Children = new ObservableCollection<LauncherNode> { group } }; app.ReplaceData(Data(tab));
-            var settings = new SettingsWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; settings.Show(); settings.RefreshData(); settings.UpdateLayout(); True(settings.FindName("PresetItemsList") is System.Windows.Controls.ListBox); settings.Hide();
+            var settings = new SettingsWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; settings.Show(); settings.RefreshData(); settings.UpdateLayout(); True(settings.FindName("PresetItemsList") is System.Windows.Controls.ListBox); True(settings.FindName("PositionModeCombo") is System.Windows.Controls.ComboBox { SelectedValue: "cursor" }); settings.Hide();
             True(app.TryCommit(_ => { }, out var setupError), setupError);
             var launcher = new MainWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; launcher.Show(); launcher.RefreshData(true); launcher.UpdateLayout();
             var pin = (System.Windows.Controls.Primitives.ToggleButton)launcher.FindName("PinToggle"); pin.IsChecked = true; PumpDispatcher(); True(app.Data.IsLauncherPinned);
@@ -355,6 +356,17 @@ static void TestBrowserUrlDropText()
     Equal("http://example.com/", ExternalDropRules.ExtractUrlFromText("not a URL\nhttp://example.com")!);
     True(ExternalDropRules.ExtractUrlFromText("file:///C:/tool.exe") is null);
     True(ExternalDropRules.ExtractUrlFromText("javascript:alert(1)") is null);
+}
+
+static void TestLauncherPositionMode()
+{
+    var settings = new LauncherWindowSettings(); Equal(LauncherWindowSettings.Cursor, settings.PositionMode); True(!settings.UsesSessionPosition);
+    WithStore((_, store) =>
+    {
+        var data = Data(new LauncherTab { Name = "Main" }); data.LauncherWindow.PositionMode = "SESSION";
+        var restored = store.Deserialize(store.Serialize(data)); Equal(LauncherWindowSettings.Session, restored.LauncherWindow.PositionMode); True(restored.LauncherWindow.UsesSessionPosition);
+        Throws<InvalidDataException>(() => new DataValidator().Validate(new OpenGepaData { LauncherWindow = new LauncherWindowSettings { PositionMode = "saved-coordinate" } }));
+    });
 }
 static void TestBrowserUrlDataTransfer()
 {
@@ -581,14 +593,16 @@ static void TestProfileSpecialTabExclusion()
     try
     {
         var app = AppService.Create(root); app.Initialize(); var link = Path.Combine(app.Paths.ShortcutDirectory, "portable.lnk"); File.WriteAllText(link, "test");
-        var tab = new LauncherTab { Name = "Portable", Children = new ObservableCollection<LauncherNode> { new FileItem { Name = "Portable", Target = link } } }; app.ReplaceData(Data(tab));
+        var tab = new LauncherTab { Name = "Portable", Children = new ObservableCollection<LauncherNode> { new FileItem { Name = "Portable", Target = link } } }; var local = Data(tab); local.LauncherWindow.PositionMode = LauncherWindowSettings.Session; app.ReplaceData(local);
         var profile = Path.Combine(root, "profile.ogp"); app.ProfileService.Save(profile);
         using (var archive = System.IO.Compression.ZipFile.OpenRead(profile))
         {
             True(archive.Entries.All(entry => !entry.FullName.Contains(BuiltInTabs.WindowsMenuId, StringComparison.OrdinalIgnoreCase)));
             True(archive.GetEntry("shortcuts/portable.lnk") is not null);
+            using var reader = new StreamReader(archive.GetEntry("settings.json")!.Open()); True(!reader.ReadToEnd().Contains("launcherWindow", StringComparison.OrdinalIgnoreCase));
         }
         var loaded = app.ProfileService.Load(profile); True(loaded.Tabs.Any(item => item.Kind == LauncherTabKinds.WindowsMenu));
+        Equal(LauncherWindowSettings.Cursor, loaded.LauncherWindow.PositionMode);
         Equal(link, ((FileItem)loaded.Tabs.Single(item => item.Name == "Portable").Children.Single()).Target);
     }
     finally { Directory.Delete(root, true); }

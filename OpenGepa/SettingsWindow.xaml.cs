@@ -30,6 +30,7 @@ public partial class SettingsWindow : Window
         UrlIconPath.Text = _app.IconSetService.GetDefaultIcon("url") ?? _app.Data.DefaultIcons.UrlIcon ?? "標準";
         TrayIconPath.Text = _app.IconSetService.GetOpenGepaIcon() ?? _app.Data.DefaultIcons.TrayIcon ?? "アプリ標準";
         GroupIconDelete.IsEnabled = _app.IconSetService.HasDefaultIcon("group"); DirectoryIconDelete.IsEnabled = _app.IconSetService.HasDefaultIcon("directory"); UrlIconDelete.IsEnabled = _app.IconSetService.HasDefaultIcon("url"); TrayIconDelete.IsEnabled = _app.IconSetService.HasOpenGepaIcon;
+        PositionModeCombo.SelectedValue = _app.Data.LauncherWindow.PositionMode;
         FileItemClickCombo.SelectedValue = _app.Data.ItemLaunch.FileItemClickCount.ToString(); DirectoryItemClickCombo.SelectedValue = _app.Data.ItemLaunch.DirectoryItemClickCount.ToString(); UrlItemClickCombo.SelectedValue = _app.Data.ItemLaunch.UrlItemClickCount.ToString();
         WindowsMenuCurrentEditCheck.IsChecked = _app.Data.WindowsMenu.AllowCurrentUserEdit; WindowsMenuAllUsersEditCheck.IsChecked = _app.Data.WindowsMenu.AllowAllUsersEdit;
         FoldersFirstRadio.IsChecked = _app.Data.WindowsMenu.FoldersFirst; ShortcutsFirstRadio.IsChecked = !_app.Data.WindowsMenu.FoldersFirst;
@@ -95,6 +96,11 @@ public partial class SettingsWindow : Window
             data.Tabs.First(t => t.Id == tab.Id).IsVisible = visible;
             if (!visible && data.SelectedTabId == tab.Id) data.SelectedTabId = data.Tabs.Where(t => t.IsVisible).OrderBy(t => t.Order).FirstOrDefault()?.Id;
         });
+    }
+    private void PositionModeCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_refreshing || PositionModeCombo.SelectedValue is not string mode) return;
+        Commit(data => data.LauncherWindow.PositionMode = mode);
     }
     private void WindowsMenuEdit_Changed(object sender, RoutedEventArgs e)
     {

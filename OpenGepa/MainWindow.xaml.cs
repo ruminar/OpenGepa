@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private string? _renderedTabId;
     private readonly DispatcherTimer _deactivationTimer;
     private bool _recentlyDeactivated;
+    private bool _hasSessionPosition;
     public MainWindow(AppService app)
     {
         InitializeComponent(); _app = app;
@@ -51,8 +52,9 @@ public partial class MainWindow : Window
     public void PositionNearCursor()
     {
         var point = System.Windows.Forms.Cursor.Position; var screen = System.Windows.Forms.Screen.FromPoint(point); var area = screen.WorkingArea; var source = HwndSource.FromHwnd(new WindowInteropHelper(this).EnsureHandle()); var transform = source?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
-        var cursor = transform.Transform(new System.Windows.Point(point.X, point.Y)); var topLeft = transform.Transform(new System.Windows.Point(area.Left, area.Top)); var bottomRight = transform.Transform(new System.Windows.Point(area.Right, area.Bottom)); Left = Math.Max(topLeft.X, Math.Min(cursor.X - Width, bottomRight.X - Width)); Top = Math.Max(topLeft.Y, Math.Min(cursor.Y - Height, bottomRight.Y - Height));
+        var cursor = transform.Transform(new System.Windows.Point(point.X, point.Y)); var topLeft = transform.Transform(new System.Windows.Point(area.Left, area.Top)); var bottomRight = transform.Transform(new System.Windows.Point(area.Right, area.Bottom)); Left = Math.Max(topLeft.X, Math.Min(cursor.X - Width, bottomRight.X - Width)); Top = Math.Max(topLeft.Y, Math.Min(cursor.Y - Height, bottomRight.Y - Height)); _hasSessionPosition = true;
     }
+    public bool HasSessionPosition => _hasSessionPosition;
     protected override void OnActivated(EventArgs e) { base.OnActivated(e); _deactivationTimer.Stop(); _recentlyDeactivated = false; }
     private void Window_Deactivated(object sender, EventArgs e)
     {

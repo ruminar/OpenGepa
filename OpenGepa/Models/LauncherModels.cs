@@ -27,6 +27,7 @@ public sealed class OpenGepaData : ObservableModel
     public bool IsLauncherPinned { get; set; }
     public AppearanceSettings Appearance { get; set; } = new();
     public ItemLaunchSettings ItemLaunch { get; set; } = new();
+    public LauncherWindowSettings LauncherWindow { get; set; } = new();
     public DefaultIconSettings DefaultIcons { get; set; } = new();
     public WindowsMenuSettings WindowsMenu { get; set; } = new();
     public PresetSettings Presets { get; set; } = new();
@@ -115,6 +116,16 @@ public sealed class ItemLaunchSettings : ObservableModel
     public int DirectoryItemClickCount { get => _directoryItemClickCount; set => SetField(ref _directoryItemClickCount, value); }
     public int UrlItemClickCount { get => _urlItemClickCount; set => SetField(ref _urlItemClickCount, value); }
     public int GetClickCount(LauncherNode node) => node switch { FileItem => FileItemClickCount, DirectoryItem => DirectoryItemClickCount, UrlItem => UrlItemClickCount, _ => 0 };
+}
+
+/// <summary>ランチャーの表示位置に関する、このPCだけの設定です。</summary>
+public sealed class LauncherWindowSettings : ObservableModel
+{
+    public const string Cursor = "cursor";
+    public const string Session = "session";
+    private string _positionMode = Cursor;
+    public string PositionMode { get => _positionMode; set => SetField(ref _positionMode, value); }
+    [JsonIgnore] public bool UsesSessionPosition => PositionMode == Session;
 }
 
 public sealed class DefaultIconSettings : ObservableModel

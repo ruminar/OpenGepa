@@ -230,7 +230,11 @@ public sealed class AppService
     {
         if (_launcher is null) return;
         if (action == LauncherToggleAction.Hide) { _launcher.Hide(); return; }
-        if (action == LauncherToggleAction.Show) { _launcher.PositionNearCursor(); _launcher.Show(); }
+        if (action == LauncherToggleAction.Show)
+        {
+            if (!Data.LauncherWindow.UsesSessionPosition || !_launcher.HasSessionPosition) _launcher.PositionNearCursor();
+            _launcher.Show();
+        }
         if (_launcher.WindowState == WindowState.Minimized) _launcher.WindowState = WindowState.Normal;
         _launcher.Activate();
     }
