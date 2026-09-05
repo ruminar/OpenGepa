@@ -209,15 +209,48 @@ public sealed class StoreAppsService
 {
     private const string StartAppsCommand = "Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress";
     private static readonly CultureInfo Culture = CultureInfo.GetCultureInfo("ja-JP");
+    private readonly object _sync = new();
+    private readonly Func<IReadOnlyList<StoreAppEntry>> _enumerate;
     private IReadOnlyList<StoreAppEntry> _last = [];
+    private Task? _refreshTask;
+    private bool _hasLoaded;
 
-    public StoreAppsService() { }
-    public StoreAppsService(IEnumerable<StoreAppEntry> initialApps) => _last = initialApps.ToList();
-
-    public ObservableCollection<LauncherNode> Load(bool refresh = false)
+    public StoreAppsService() : this((Func<IReadOnlyList<StoreAppEntry>>)Enumerate) { }
+    public StoreAppsService(IEnumerable<StoreAppEntry> initialApps)
     {
-        if (refresh || _last.Count == 0) _last = Enumerate();
-        return BuildGroups(_last);
+        _enumerate = Enumerate;
+        _last = initialApps.ToList();
+        _hasLoaded = true;
+    }
+    public StoreAppsService(Func<IReadOnlyList<StoreAppEntry>> enumerate) => _enumerate = enumerate;
+
+    public bool HasLoaded { get { lock (_sync) return _hasLoaded; } }
+
+    public ObservableCollection<LauncherNode> Load()
+    {
+        IReadOnlyList<StoreAppEntry> snapshot;
+        lock (_sync) snapshot = _last;
+        return BuildGroups(snapshot);
+    }
+
+    /// <summary>実行中の列挙があれば共有し、PowerShellを重複起動しません。</summary>
+    public Task RefreshAsync()
+    {
+        lock (_sync) return _refreshTask ??= RefreshCoreAsync();
+    }
+
+    private async Task RefreshCoreAsync()
+    {
+        await Task.Yield();
+        try
+        {
+            var apps = await Task.Run(_enumerate).ConfigureAwait(false);
+            lock (_sync) { _last = apps; _hasLoaded = true; }
+        }
+        finally
+        {
+            lock (_sync) _refreshTask = null;
+        }
     }
 
     public static ObservableCollection<LauncherNode> BuildGroups(IEnumerable<StoreAppEntry> source)
@@ -244,7 +277,12 @@ public sealed class StoreAppsService
         return FindAumid("NVIDIA Control Panel", "NVIDIA コントロール パネル");
     }
 
-    public string? FindAumid(params string[] nameFragments) => FindAumid(_last.Count == 0 ? Enumerate() : _last, nameFragments);
+    public string? FindAumid(params string[] nameFragments)
+    {
+        IReadOnlyList<StoreAppEntry> snapshot;
+        lock (_sync) snapshot = _last;
+        return FindAumid(snapshot, nameFragments);
+    }
     public static string? FindAumid(IEnumerable<StoreAppEntry> source, params string[] nameFragments) => source.FirstOrDefault(item => nameFragments.Any(fragment => item.Name.Contains(fragment, StringComparison.OrdinalIgnoreCase)))?.Aumid;
 
     public static async Task<(bool Success, string Error)> LaunchAsync(string aumid)
@@ -257,7 +295,7 @@ public sealed class StoreAppsService
         catch (Exception ex) { return (false, ex.Message); }
     }
 
-    private IReadOnlyList<StoreAppEntry> Enumerate()
+    private static IReadOnlyList<StoreAppEntry> Enumerate()
     {
         try
         {

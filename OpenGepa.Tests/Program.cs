@@ -44,6 +44,8 @@ var tests = new (string Name, Action Run)[]
     ("GPU store app detection supports multiple vendors", TestGpuStoreAppDetection),
     ("Media key presets use global media virtual keys", TestMediaKeyPresets),
     ("Media presets create a nested volume group", TestMediaPresetHierarchy),
+    ("Store app refresh is cached and single-flight", TestStoreAppRefreshCache),
+    ("Tray toggle uses pre-click window state", TestTrayToggleRules),
     ("Windows Menu merges current-user shortcuts first", TestWindowsMenuMerge),
     ("Bookmark HTML imports atomically into timestamp root", TestBookmarkImport),
     ("Default data seeds only an absent configuration", TestDefaultDataSeeding),
@@ -511,6 +513,31 @@ static void TestMediaPresetHierarchy()
     True(media.Children.OfType<PresetItem>().Select(item => item.PresetId).SequenceEqual(["media-previous", "media-play-pause", "media-next", "media-stop"]));
     var volume = media.Children.OfType<GroupNode>().Single(group => group.Name == "音量");
     True(volume.Children.OfType<PresetItem>().Select(item => item.PresetId).SequenceEqual(["media-volume-down", "media-volume-up", "media-volume-mute"]));
+}
+static void TestStoreAppRefreshCache()
+{
+    var calls = 0;
+    using var release = new ManualResetEventSlim();
+    var service = new StoreAppsService(() =>
+    {
+        Interlocked.Increment(ref calls); release.Wait();
+        return [new StoreAppEntry("Cached App", "Cached!App")];
+    });
+    Equal(0, service.Load().Count); True(service.FindAumid("Cached App") is null); Equal(0, calls);
+    var first = service.RefreshAsync(); var second = service.RefreshAsync();
+    True(ReferenceEquals(first, second));
+    SpinWait.SpinUntil(() => Volatile.Read(ref calls) == 1, 2_000); Equal(1, calls);
+    release.Set(); Task.WhenAll(first, second).GetAwaiter().GetResult();
+    True(service.HasLoaded); Equal(1, calls);
+    var group = service.Load().Single() as GroupNode; True(group is not null);
+    Equal("Cached App", group!.Children.Single() is StoreAppItem item ? item.Name : "");
+}
+static void TestTrayToggleRules()
+{
+    Equal(LauncherToggleAction.Show, LauncherToggleRules.Decide(false, false));
+    Equal(LauncherToggleAction.Show, LauncherToggleRules.Decide(false, true));
+    Equal(LauncherToggleAction.Activate, LauncherToggleRules.Decide(true, false));
+    Equal(LauncherToggleAction.Hide, LauncherToggleRules.Decide(true, true));
 }
 
 static void TestWindowsMenuMerge()

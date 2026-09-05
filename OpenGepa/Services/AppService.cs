@@ -14,12 +14,21 @@ using OpenGepa.Models;
 
 namespace OpenGepa.Services;
 
+public enum LauncherToggleAction { Show, Activate, Hide }
+
+public static class LauncherToggleRules
+{
+    public static LauncherToggleAction Decide(bool isVisible, bool wasActive) => !isVisible ? LauncherToggleAction.Show : wasActive ? LauncherToggleAction.Hide : LauncherToggleAction.Activate;
+}
+
 public sealed class AppService
 {
     private MainWindow? _launcher;
     private readonly Dictionary<string, EditorWindow> _editors = new(StringComparer.OrdinalIgnoreCase);
     private SettingsWindow? _settings;
     private long _persistenceVersion;
+    private readonly object _environmentRefreshSync = new();
+    private Task? _environmentRefreshTask;
 
     private AppService(AppPaths paths, DataStore store)
     {
@@ -55,6 +64,7 @@ public sealed class AppService
     public ProfileService ProfileService { get; }
     public OpenGepaData Data { get; private set; } = null!;
     public event EventHandler? DataChanged;
+    public event EventHandler? EnvironmentDataChanged;
 
     public static AppService Create(string? baseDirectory = null)
     {
@@ -80,11 +90,37 @@ public sealed class AppService
         tab.RuntimeChildren = tab.Kind switch
         {
             LauncherTabKinds.WindowsMenu => WindowsMenuService.Load(Data.WindowsMenu),
-            LauncherTabKinds.StoreApps => StoreAppsService.Load(refresh),
+            LauncherTabKinds.StoreApps => StoreAppsService.Load(),
             LauncherTabKinds.Presets => PresetService.Load(Data.Presets),
             _ => tab.RuntimeChildren
         };
         return tab.DisplayChildren;
+    }
+
+    /// <summary>ストアアプリ一覧と、それを参照する主要操作を一度の環境取得で更新します。</summary>
+    public void RequestEnvironmentRefresh(LauncherTab tab, bool force = false)
+    {
+        if (tab.Kind is not (LauncherTabKinds.StoreApps or LauncherTabKinds.Presets) || (!force && StoreAppsService.HasLoaded)) return;
+        lock (_environmentRefreshSync)
+        {
+            if (_environmentRefreshTask is not null) return;
+            _environmentRefreshTask = RefreshEnvironmentCoreAsync();
+        }
+    }
+
+    private async Task RefreshEnvironmentCoreAsync()
+    {
+        await Task.Yield();
+        try
+        {
+            await StoreAppsService.RefreshAsync();
+            foreach (var tab in Data.Tabs.Where(item => item.Kind is LauncherTabKinds.StoreApps or LauncherTabKinds.Presets)) tab.RuntimeChildren = null;
+            EnvironmentDataChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            lock (_environmentRefreshSync) _environmentRefreshTask = null;
+        }
     }
 
     public bool TryCommit(Action<OpenGepaData> change, out string error)
@@ -173,19 +209,30 @@ public sealed class AppService
 
     public void PrepareLauncher()
     {
-        _launcher ??= new MainWindow(this);
-        _launcher.RefreshData(true);
+        if (_launcher is not null) return;
+        _launcher = new MainWindow(this);
+        _launcher.RefreshData();
     }
 
     public void ShowLauncher()
     {
         PrepareLauncher();
-        if (_launcher!.IsVisible)
-        {
-            if (Data.IsLauncherPinned && !_launcher.IsActive) { if (_launcher.WindowState == WindowState.Minimized) _launcher.WindowState = WindowState.Normal; _launcher.Activate(); return; }
-            _launcher.Hide(); return;
-        }
-        _launcher.PositionNearCursor(); _launcher.Show(); _launcher.Activate();
+        ApplyLauncherAction(LauncherToggleRules.Decide(_launcher!.IsVisible, _launcher.IsActive));
+    }
+
+    public void ShowLauncherFromTray()
+    {
+        PrepareLauncher();
+        ApplyLauncherAction(LauncherToggleRules.Decide(_launcher!.IsVisible, _launcher.ConsumeActiveBeforeTrayClick()));
+    }
+
+    private void ApplyLauncherAction(LauncherToggleAction action)
+    {
+        if (_launcher is null) return;
+        if (action == LauncherToggleAction.Hide) { _launcher.Hide(); return; }
+        if (action == LauncherToggleAction.Show) { _launcher.PositionNearCursor(); _launcher.Show(); }
+        if (_launcher.WindowState == WindowState.Minimized) _launcher.WindowState = WindowState.Normal;
+        _launcher.Activate();
     }
 
     public void HideLauncher() => _launcher?.Hide();
@@ -276,6 +323,7 @@ public sealed class TrayService : IDisposable
 {
     private readonly AppService _app;
     private readonly System.Windows.Forms.NotifyIcon _icon = new();
+    private int _leftClickQueued;
     public TrayService(AppService app)
     {
         _app = app; _icon.Text = "OpenGepa"; RefreshIcon(); _app.DataChanged += (_, _) => RefreshIcon();
@@ -284,7 +332,17 @@ public sealed class TrayService : IDisposable
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("終了", null, (_, _) => System.Windows.Application.Current.Dispatcher.Invoke(() => ((App)System.Windows.Application.Current).ExitApplication()));
         _icon.ContextMenuStrip = menu;
-        _icon.MouseClick += (_, e) => { if (e.Button == System.Windows.Forms.MouseButtons.Left) System.Windows.Application.Current.Dispatcher.Invoke(_app.ShowLauncher); };
+        _icon.MouseClick += (_, e) => { if (e.Button == System.Windows.Forms.MouseButtons.Left) QueueLeftClick(); };
+    }
+    private void QueueLeftClick()
+    {
+        if (Interlocked.Exchange(ref _leftClickQueued, 1) != 0) return;
+        var dispatcher = System.Windows.Application.Current.Dispatcher;
+        dispatcher.BeginInvoke(new Action(() =>
+        {
+            try { _app.ShowLauncherFromTray(); }
+            finally { dispatcher.BeginInvoke(new Action(() => Volatile.Write(ref _leftClickQueued, 0)), System.Windows.Threading.DispatcherPriority.ApplicationIdle); }
+        }), System.Windows.Threading.DispatcherPriority.Input);
     }
     public void Show() => _icon.Visible = true;
     private void RefreshIcon()

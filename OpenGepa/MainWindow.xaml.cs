@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using OpenGepa.Models;
 using OpenGepa.Services;
@@ -27,7 +28,16 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, HashSet<string>> _expandedByTab = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _searchByTab = new(StringComparer.OrdinalIgnoreCase);
     private string? _renderedTabId;
-    public MainWindow(AppService app) { InitializeComponent(); _app = app; _app.DataChanged += (_, _) => Dispatcher.BeginInvoke(() => RefreshData()); }
+    private readonly DispatcherTimer _deactivationTimer;
+    private bool _recentlyDeactivated;
+    public MainWindow(AppService app)
+    {
+        InitializeComponent(); _app = app;
+        _deactivationTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMilliseconds(200) };
+        _deactivationTimer.Tick += (_, _) => CompleteDeactivation();
+        _app.DataChanged += (_, _) => Dispatcher.BeginInvoke(() => RefreshData());
+        _app.EnvironmentDataChanged += (_, _) => Dispatcher.BeginInvoke(() => RefreshData());
+    }
     private void Window_SourceInitialized(object? sender, EventArgs e) => ThemePalette.Apply(_app.Data.Appearance);
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { if (!App.IsExiting) { e.Cancel = true; Hide(); } }
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
@@ -35,7 +45,7 @@ public partial class MainWindow : Window
     public void RefreshData(bool refreshEnvironment = false)
     {
         Icon = WindowIconService.Load(_app); CaptureExpanded(_renderedTabId); _refreshing = true; var visible = _app.VisibleTabs; var selected = _app.SelectedTab; TabsList.ItemsSource = visible; TabsList.SelectedItem = selected; PinToggle.IsChecked = _app.Data.IsLauncherPinned; Topmost = !_app.Data.IsLauncherPinned; Title = selected is null ? "OpenGepa" : $"OpenGepa - {selected.Name}";
-        _renderedTabId = selected?.Id; if (selected is not null) _app.GetDisplayChildren(selected, refreshEnvironment);
+        _renderedTabId = selected?.Id; if (selected is not null) { _app.GetDisplayChildren(selected, refreshEnvironment); _app.RequestEnvironmentRefresh(selected); }
         _settingSearch = true; SearchText.Text = selected is not null && _searchByTab.TryGetValue(selected.Id, out var search) ? search : ""; _settingSearch = false; ApplySearch(false); EmptyText.Visibility = visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed; _refreshing = false;
     }
     public void PositionNearCursor()
@@ -43,7 +53,25 @@ public partial class MainWindow : Window
         var point = System.Windows.Forms.Cursor.Position; var screen = System.Windows.Forms.Screen.FromPoint(point); var area = screen.WorkingArea; var source = HwndSource.FromHwnd(new WindowInteropHelper(this).EnsureHandle()); var transform = source?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
         var cursor = transform.Transform(new System.Windows.Point(point.X, point.Y)); var topLeft = transform.Transform(new System.Windows.Point(area.Left, area.Top)); var bottomRight = transform.Transform(new System.Windows.Point(area.Right, area.Bottom)); Left = Math.Max(topLeft.X, Math.Min(cursor.X - Width, bottomRight.X - Width)); Top = Math.Max(topLeft.Y, Math.Min(cursor.Y - Height, bottomRight.Y - Height));
     }
-    private void Window_Deactivated(object sender, EventArgs e) { if (IsVisible && !_app.Data.IsLauncherPinned && !_dialogOpen) Hide(); }
+    protected override void OnActivated(EventArgs e) { base.OnActivated(e); _deactivationTimer.Stop(); _recentlyDeactivated = false; }
+    private void Window_Deactivated(object sender, EventArgs e)
+    {
+        if (!IsVisible || _dialogOpen) return;
+        _recentlyDeactivated = true;
+        _deactivationTimer.Stop(); _deactivationTimer.Start();
+    }
+    private void CompleteDeactivation()
+    {
+        _deactivationTimer.Stop();
+        if (IsVisible && !_app.Data.IsLauncherPinned && !_dialogOpen) Hide();
+        _recentlyDeactivated = false;
+    }
+    public bool ConsumeActiveBeforeTrayClick()
+    {
+        var wasActive = IsActive || _recentlyDeactivated;
+        _deactivationTimer.Stop(); _recentlyDeactivated = false;
+        return wasActive;
+    }
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key is Key.Up or Key.Down)
@@ -338,8 +366,9 @@ public partial class MainWindow : Window
     }
     private void RefreshSpecialTab()
     {
-        if (_app.SelectedTab is { IsSystemTab: true } tab) tab.RuntimeChildren = null;
-        RefreshData(true);
+        if (_app.SelectedTab is not { IsSystemTab: true } tab) return;
+        if (tab.Kind is LauncherTabKinds.StoreApps or LauncherTabKinds.Presets) { _app.RequestEnvironmentRefresh(tab, true); return; }
+        tab.RuntimeChildren = null; RefreshData(true);
     }
     private void CollapseAll() { foreach (var item in EnumerateContainers(LauncherTree)) if (item.DataContext is GroupNode) item.IsExpanded = false; CaptureExpanded(_renderedTabId); }
     private void ExpandAllStoreApps() { ExpandAll(); CaptureExpanded(_renderedTabId); }
