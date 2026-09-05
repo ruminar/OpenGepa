@@ -232,6 +232,7 @@ public partial class MainWindow : Window
     }
     private void AddRootMenu(ContextMenu menu, LauncherTab tab)
     {
+        if (tab.Kind == LauncherTabKinds.StoreApps) menu.Items.Add(Menu("すべて展開する", ExpandAllStoreApps));
         menu.Items.Add(Menu("すべて折りたたむ", CollapseAll)); menu.Items.Add(new Separator());
         if (tab.Kind == LauncherTabKinds.WindowsMenu)
         {
@@ -247,7 +248,7 @@ public partial class MainWindow : Window
         if (tab.Kind == LauncherTabKinds.WindowsMenu) { AddWindowsMenuNodeMenu(menu, node); return; }
         if (tab.Kind == LauncherTabKinds.StoreApps)
         {
-            menu.Items.Add(Menu("すべて折りたたむ", CollapseAll));
+            menu.Items.Add(Menu("すべて展開する", ExpandAllStoreApps)); menu.Items.Add(Menu("すべて折りたたむ", CollapseAll));
             if (node is StoreAppItem app) { menu.Items.Add(new Separator()); menu.Items.Add(Menu("AUMIDをコピー", () => CopyText(app.Aumid))); }
             return;
         }
@@ -341,6 +342,7 @@ public partial class MainWindow : Window
         RefreshData(true);
     }
     private void CollapseAll() { foreach (var item in EnumerateContainers(LauncherTree)) if (item.DataContext is GroupNode) item.IsExpanded = false; CaptureExpanded(_renderedTabId); }
+    private void ExpandAllStoreApps() { ExpandAll(); CaptureExpanded(_renderedTabId); }
     private static void CopyText(string text) { try { System.Windows.Clipboard.SetText(text); } catch (Exception) { } }
     private void ClearSearch_Click(object sender, RoutedEventArgs e) => SearchText.Clear();
     private void AddGroup(string? parentId) { var d = new TextPromptDialog("グループを追加", "名前") { Owner = this }; if (ShowDialog(d.ShowDialog) == true) AddNode(new GroupNode { Name = d.Value }, parentId); }
