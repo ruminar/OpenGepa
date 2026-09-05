@@ -235,7 +235,17 @@ public sealed class PresetItem : LauncherNode
     public string Name { get => _name; set => SetField(ref _name, value); }
     [JsonIgnore] public string? IconSource { get; set; }
     [JsonIgnore] public bool RequiresConfirmation { get; set; }
-    public override string DisplayGlyph => "⚙";
+    public override string DisplayGlyph => PresetId switch
+    {
+        "media-previous" => "⏮",
+        "media-play-pause" => "⏯",
+        "media-next" => "⏭",
+        "media-stop" => "⏹",
+        "media-volume-down" => "🔈",
+        "media-volume-up" => "🔊",
+        "media-volume-mute" => "🔇",
+        _ => "⚙"
+    };
 }
 
 public static class LauncherTabCopy

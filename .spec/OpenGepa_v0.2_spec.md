@@ -195,7 +195,7 @@ OpenGepaは各プリセットの既知のWindows機能だけを起動し、利�
 
 ターミナル（管理者）などの管理者操作はWindowsのUACに従う。ロック、スリープ、シャットダウン、再起動、サインアウトはOpenGepa側で操作内容を明示した確認を表示する。メディア コントロールはWindowsのグローバルメディアキーを送信し、メディアセッションを公開するアプリケーションを対象にする。対象アプリが存在しない、または対応しない場合は何も起こらない。［音量］は誤クリックを避けるため子Groupとし、利用者が展開した時だけ音量変更項目を表示する。新規データ作成時は、その環境で利用可能な項目をすべて初期表示する。
 
-メディア操作の項目アイコンは、`iconSet/mediaPrevious.png`、`mediaPlayPause.png`、`mediaNext.png`、`mediaStop.png`、`volumeDown.png`、`volumeUp.png`、`volumeMute.png`を固定名で参照する。対応ファイルが存在しない場合は、主要操作の標準表示へフォールバックする。
+メディア操作の項目アイコンは、`iconSet/mediaPrevious.png`、`mediaPlayPause.png`、`mediaNext.png`、`mediaStop.png`、`volumeDown.png`、`volumeUp.png`、`volumeMute.png`を固定名で参照する。対応ファイルが存在しない場合は、順に`⏮`、`⏯`、`⏭`、`⏹`、`🔈`、`🔊`、`🔇`へフォールバックする。その他の主要操作は従来どおり`⚙`へフォールバックする。
 
 ## 9. 設定ウインドウ
 
