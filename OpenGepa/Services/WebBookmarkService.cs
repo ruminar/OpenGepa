@@ -51,7 +51,7 @@ public sealed class WebBookmarkService
         var stack = new List<ObservableCollection<LauncherNode>> { root };
         GroupNode? pendingGroup = null;
         var nodes = 0;
-        var tokenPattern = new Regex("<(?<tag>H3|A)\\b(?<attrs>[^>]*)>(?<content>.*?)</\\k<tag>\\s*>|<(?<open>DL)\\b[^>]*>|</DL\\s*>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        var tokenPattern = new Regex("<(?<tag>H3|A)\\b(?<attrs>[^>]*)>(?<content>.*?)</\\k<tag>\\s*>|<(?<hr>HR)\\b[^>]*>|<(?<open>DL)\\b[^>]*>|</DL\\s*>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
         foreach (Match token in tokenPattern.Matches(html))
         {
             if (token.Groups["open"].Success)
@@ -67,6 +67,13 @@ public sealed class WebBookmarkService
             {
                 pendingGroup = null;
                 if (stack.Count > 1) stack.RemoveAt(stack.Count - 1);
+                continue;
+            }
+            if (token.Groups["hr"].Success)
+            {
+                if (++nodes > MaxNodes) throw new InvalidDataException($"ブックマークの項目数は {MaxNodes:N0} 件以下にしてください。");
+                if (pendingGroup is not null) throw new InvalidDataException("ブックマークHTMLのGroup階層が不正です。");
+                stack[^1].Add(new SeparatorItem { Order = stack[^1].Count });
                 continue;
             }
             var tag = token.Groups["tag"].Value;
@@ -144,7 +151,10 @@ public sealed class WebBookmarkService
                     if (!Uri.TryCreate(url.Target, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) throw new InvalidDataException($"{url.Name} のURLが不正です。");
                     writer.WriteLine($"{indent}    <DT><A HREF=\"{WebUtility.HtmlEncode(uri.AbsoluteUri)}\">{WebUtility.HtmlEncode(url.Name)}</A>");
                     break;
-                default: throw new InvalidDataException("WebランチャーにはURL以外を登録できません。");
+                case SeparatorItem:
+                    writer.WriteLine($"{indent}    <DT><HR>");
+                    break;
+                default: throw new InvalidDataException("WebランチャーにはURLと区切り線以外を登録できません。");
             }
         }
         writer.WriteLine(indent + "</DL><p>");

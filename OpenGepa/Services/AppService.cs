@@ -42,6 +42,12 @@ public sealed class AppService
         PresetService = new PresetService(StoreAppsService);
         ManagedShortcutService = new ManagedShortcutService(paths);
         WebBookmarkService = new WebBookmarkService();
+        UsageService = new UsageService(paths, ResolveUsageTarget);
+        UsageService.Changed += (_, _) =>
+        {
+            ClearUsageRuntimeTabs();
+            UsageDataChanged?.Invoke(this, EventArgs.Empty);
+        };
         LaunchService = new LaunchService(this);
         StartupService = new StartupService();
         ProfileService = new ProfileService(this);
@@ -59,12 +65,14 @@ public sealed class AppService
     public PresetService PresetService { get; }
     public ManagedShortcutService ManagedShortcutService { get; }
     public WebBookmarkService WebBookmarkService { get; }
+    public UsageService UsageService { get; }
     public LaunchService LaunchService { get; }
     public StartupService StartupService { get; }
     public ProfileService ProfileService { get; }
     public OpenGepaData Data { get; private set; } = null!;
     public event EventHandler? DataChanged;
     public event EventHandler? EnvironmentDataChanged;
+    public event EventHandler? UsageDataChanged;
 
     public static AppService Create(string? baseDirectory = null)
     {
@@ -92,6 +100,8 @@ public sealed class AppService
             LauncherTabKinds.WindowsMenu => WindowsMenuService.Load(Data.WindowsMenu),
             LauncherTabKinds.StoreApps => StoreAppsService.Load(),
             LauncherTabKinds.Presets => PresetService.Load(Data.Presets),
+            LauncherTabKinds.History => UsageService.BuildHistory(),
+            LauncherTabKinds.Frequency => UsageService.BuildFrequency(Data.Usage.FrequencyPeriod),
             _ => tab.RuntimeChildren
         };
         return tab.DisplayChildren;
@@ -100,7 +110,7 @@ public sealed class AppService
     /// <summary>ストアアプリ一覧と、それを参照する主要操作を一度の環境取得で更新します。</summary>
     public void RequestEnvironmentRefresh(LauncherTab tab, bool force = false)
     {
-        if (tab.Kind is not (LauncherTabKinds.StoreApps or LauncherTabKinds.Presets) || (!force && StoreAppsService.HasLoaded)) return;
+        if (tab.Kind is not (LauncherTabKinds.StoreApps or LauncherTabKinds.Presets or LauncherTabKinds.History or LauncherTabKinds.Frequency) || (!force && StoreAppsService.HasLoaded)) return;
         lock (_environmentRefreshSync)
         {
             if (_environmentRefreshTask is not null) return;
@@ -114,7 +124,7 @@ public sealed class AppService
         try
         {
             await StoreAppsService.RefreshAsync();
-            foreach (var tab in Data.Tabs.Where(item => item.Kind is LauncherTabKinds.StoreApps or LauncherTabKinds.Presets)) tab.RuntimeChildren = null;
+            foreach (var tab in Data.Tabs.Where(item => item.Kind is LauncherTabKinds.StoreApps or LauncherTabKinds.Presets or LauncherTabKinds.History or LauncherTabKinds.Frequency)) tab.RuntimeChildren = null;
             EnvironmentDataChanged?.Invoke(this, EventArgs.Empty);
         }
         finally
@@ -127,7 +137,7 @@ public sealed class AppService
     {
         try
         {
-            var candidate = Store.Clone(Data); change(candidate); DataSaveQueue.SaveNowAsync(candidate, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = candidate; ThemePalette.Apply(Data.Appearance);
+            var candidate = Store.Clone(Data); change(candidate); DataSaveQueue.SaveNowAsync(candidate, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = candidate; ThemePalette.Apply(Data.Appearance); ClearUsageRuntimeTabs();
             DataChanged?.Invoke(this, EventArgs.Empty); error = ""; return true;
         }
         catch (Exception ex) { error = ex.Message; return false; }
@@ -153,7 +163,7 @@ public sealed class AppService
 
     public void ReplaceData(OpenGepaData data)
     {
-        DataSaveQueue.SaveNowAsync(data, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = data; ThemePalette.Apply(Data.Appearance); DataChanged?.Invoke(this, EventArgs.Empty);
+        DataSaveQueue.SaveNowAsync(data, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = data; ThemePalette.Apply(Data.Appearance); ClearUsageRuntimeTabs(); DataChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SelectTab(string id)
@@ -165,11 +175,31 @@ public sealed class AppService
     }
 
     /// <summary>アプリ終了前に、選択タブなどの遅延保存を確実に完了します。</summary>
-    public void FlushPersistence() => DataSaveQueue.Flush();
+    public void FlushPersistence() { DataSaveQueue.Flush(); UsageService.Flush(); }
 
     private long NextPersistenceVersion() => ++_persistenceVersion;
 
     private void RequestDeferredSave() => DataSaveQueue.RequestDeferredSave(Store.Clone(Data), NextPersistenceVersion());
+
+    private void ClearUsageRuntimeTabs()
+    {
+        if (Data is null) return;
+        foreach (var tab in Data.Tabs.Where(tab => tab.Kind is LauncherTabKinds.History or LauncherTabKinds.Frequency)) tab.RuntimeChildren = null;
+    }
+
+    private LauncherNode? ResolveUsageTarget(LaunchTargetIdentity identity)
+    {
+        if (Data is null) return null;
+        if (identity.Kind == UsageIdentity.Node)
+            return Data.Tabs.Where(tab => !tab.IsSystemTab).SelectMany(tab => Walk(tab.Children)).FirstOrDefault(node => node.Id.Equals(identity.Id, StringComparison.OrdinalIgnoreCase));
+        if (identity.Kind == UsageIdentity.WindowsMenu && Enum.TryParse<WindowsMenuSource>(identity.Source, out var source))
+            return Walk(GetDisplayChildren(Data.Tabs.First(tab => tab.Kind == LauncherTabKinds.WindowsMenu))).OfType<WindowsMenuShortcutItem>().FirstOrDefault(item => item.Source == source && item.RelativePath.Equals(identity.Id, StringComparison.OrdinalIgnoreCase));
+        if (identity.Kind == UsageIdentity.StoreApp)
+            return Walk(GetDisplayChildren(Data.Tabs.First(tab => tab.Kind == LauncherTabKinds.StoreApps))).OfType<StoreAppItem>().FirstOrDefault(item => item.Aumid.Equals(identity.Id, StringComparison.OrdinalIgnoreCase));
+        if (identity.Kind == UsageIdentity.Preset)
+            return Walk(GetDisplayChildren(Data.Tabs.First(tab => tab.Kind == LauncherTabKinds.Presets))).OfType<PresetItem>().FirstOrDefault(item => item.PresetId.Equals(identity.Id, StringComparison.OrdinalIgnoreCase));
+        return null;
+    }
 
     public void QueueBookmarkIcons(string tabId, IEnumerable<BookmarkIconCandidate> candidates) => BookmarkIconQueue.Enqueue(tabId, candidates);
     public bool QueueSpecifiedBookmarkIcon(string tabId, UrlItem item, string iconAddress)
@@ -365,12 +395,28 @@ public sealed class LaunchService
     {
         try
         {
-            if (item is StoreAppItem storeApp) return await StoreAppsService.LaunchAsync(storeApp.Aumid);
-            if (item is PresetItem preset) return await _app.PresetService.LaunchAsync(preset);
+            if (item is UsageDisplayItem display)
+            {
+                if (display.CurrentItem is null) return (false, "現在の起動対象を利用できません。");
+                item = display.CurrentItem;
+            }
+            if (item is StoreAppItem storeApp)
+            {
+                var result = await StoreAppsService.LaunchAsync(storeApp.Aumid);
+                if (result.Success) RecordSuccessfulLaunch(item);
+                return result;
+            }
+            if (item is PresetItem preset)
+            {
+                var result = await _app.PresetService.LaunchAsync(preset);
+                if (result.Success) RecordSuccessfulLaunch(item);
+                return result;
+            }
             if (item is WindowsMenuShortcutItem windowsMenu)
             {
                 if (!File.Exists(windowsMenu.Target)) throw new FileNotFoundException("Start Menu のショートカットが見つかりません。", windowsMenu.Target);
                 await Task.Run(() => Process.Start(new ProcessStartInfo(windowsMenu.Target) { UseShellExecute = true }));
+                RecordSuccessfulLaunch(item);
                 return (true, string.Empty);
             }
             var target = item switch { NamedLauncherItem named => named.Target, DirectoryItem directory => directory.Target, _ => throw new InvalidDataException("起動できない項目です。") };
@@ -395,9 +441,16 @@ public sealed class LaunchService
                 if (!_app.TryCommit(data => { var found = (FileItem)FindItem(data, repairedFile.Id)!; found.Target = newTarget; found.IsTargetMissing = false; }, out var saveError))
                     return (false, "起動には成功しましたが、補正したパスを保存できませんでした: " + saveError);
             }
+            RecordSuccessfulLaunch(item);
             return (true, "");
         }
         catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    private void RecordSuccessfulLaunch(LauncherNode item)
+    {
+        try { _app.UsageService.RecordSuccessfulLaunch(item); }
+        catch { }
     }
 
     public bool OpenProperties(IntPtr owner, string target) => SHObjectProperties(owner, 0x2, target, null);
@@ -586,6 +639,8 @@ public sealed class IconSetService
             LauncherTabKinds.WindowsMenu => "winMenu.png",
             LauncherTabKinds.StoreApps => "winStore.png",
             LauncherTabKinds.Presets => "winCust.png",
+            LauncherTabKinds.History => "history.png",
+            LauncherTabKinds.Frequency => "frequency.png",
             _ => null
         };
         if (systemIcon is not null) return File.Exists(Path.Combine(_paths.IconSetDirectory, systemIcon)) ? "iconSet/" + systemIcon : null;
@@ -610,7 +665,7 @@ public sealed class SiteIconService
 {
     private const int MaxIconBytes = 1_048_576;
     private const int MaxHtmlBytes = 2_097_152;
-    private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36 OpenGepa/0.1";
+    private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36 OpenGepa/0.3";
     private readonly IconService _icons;
     private static readonly HttpClient Client = CreateClient(TimeSpan.FromSeconds(8));
     private static readonly HttpClient BackgroundClient = CreateClient(TimeSpan.FromSeconds(3));

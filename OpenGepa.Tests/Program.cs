@@ -39,6 +39,7 @@ var tests = new (string Name, Action Run)[]
     ("Site icon HTML candidates", TestSiteIconHtmlCandidates),
     ("Specified bookmark icon URL resolves relative paths", TestSpecifiedBookmarkIconUrl),
     ("v0.1 data migrates to built-in tabs", TestV01Migration),
+    ("v0.2 data appends visible usage tabs", TestV02UsageTabMigration),
     ("Built-in tab visibility and order are preserved", TestBuiltInTabPresentation),
     ("Web launcher accepts only URLs", TestWebLauncherRestriction),
     ("Store app grouping keeps same initial together", TestStoreAppGrouping),
@@ -49,6 +50,11 @@ var tests = new (string Name, Action Run)[]
     ("Tray toggle uses pre-click window state", TestTrayToggleRules),
     ("Windows Menu merges current-user shortcuts first", TestWindowsMenuMerge),
     ("Bookmark HTML imports atomically into timestamp root", TestBookmarkImport),
+    ("Bookmark separators round trip as HR", TestBookmarkSeparatorRoundTrip),
+    ("Separator persists and is allowed in Web launchers", TestSeparatorPersistence),
+    ("Usage history frequency and exclusion share one record", TestUsageRecording),
+    ("Usage periods retain totals and prune old days", TestUsagePeriods),
+    ("Unreadable usage data starts empty", TestUnreadableUsageData),
     ("Default data seeds only an absent configuration", TestDefaultDataSeeding),
     ("Deferred persistence is serialized and does not overwrite newer data", TestDeferredPersistence),
 };
@@ -186,18 +192,19 @@ static void TestProfileRoundTrip()
     {
         var app = AppService.Create(path); app.Initialize();
         var iconPath = Path.Combine(app.Paths.IconDirectory, "sample.png"); WritePng(iconPath, System.Drawing.Color.Red);
-        var tab = new LauncherTab { Name = "Profile" }; tab.Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tools\\Tool.exe", Icon = "icon/sample.png" }); var data = Data(tab); data.Appearance = new AppearanceSettings { Theme = "custom", GroupBackgroundColor = "#112233", GroupForegroundColor = "#445566", LauncherItemBackgroundColor = "#778899", LauncherItemForegroundColor = "#AABBCC" }; app.ReplaceData(data);
+        var tab = new LauncherTab { Name = "Profile" }; tab.Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tools\\Tool.exe", Icon = "icon/sample.png", Order = 0 }); tab.Children.Add(new SeparatorItem { Order = 1 }); var data = Data(tab); data.Appearance = new AppearanceSettings { Theme = "custom", GroupBackgroundColor = "#112233", GroupForegroundColor = "#445566", LauncherItemBackgroundColor = "#778899", LauncherItemForegroundColor = "#AABBCC" }; app.ReplaceData(data);
         WritePng(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"), System.Drawing.Color.Goldenrod);
         var profile = Path.Combine(path, "profile.ogp"); app.ProfileService.Save(profile);
         using (var archive = System.IO.Compression.ZipFile.OpenRead(profile))
         {
             True(archive.GetEntry("manifest.json") is not null); True(archive.GetEntry($"menus/{tab.Id}.json") is not null); True(archive.GetEntry("icons/sample.png") is not null); True(archive.GetEntry("iconSet/group_default.png") is not null);
+            using (var manifest = System.Text.Json.JsonDocument.Parse(archive.GetEntry("manifest.json")!.Open())) Equal(2, manifest.RootElement.GetProperty("formatVersion").GetInt32());
             using var reader = new StreamReader(archive.GetEntry($"menus/{tab.Id}.json")!.Open()); True(reader.ReadToEnd().Contains("icons/sample.png", StringComparison.Ordinal));
         }
         WritePng(iconPath, System.Drawing.Color.Blue);
         File.Delete(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"));
         var loaded = app.ProfileService.Load(profile); var item = (FileItem)loaded.Tabs[0].Children[0];
-        Equal("icon/sample_2.png", item.Icon); True(File.Exists(Path.Combine(path, "icon", "sample_2.png"))); True(File.Exists(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"))); Equal("custom", loaded.Appearance.Theme); Equal("#112233", loaded.Appearance.GroupBackgroundColor);
+        Equal("icon/sample_2.png", item.Icon); True(loaded.Tabs[0].Children[1] is SeparatorItem); True(File.Exists(Path.Combine(path, "icon", "sample_2.png"))); True(File.Exists(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"))); Equal("custom", loaded.Appearance.Theme); Equal("#112233", loaded.Appearance.GroupBackgroundColor);
     }
     finally { Directory.Delete(path, true); }
 }
@@ -453,13 +460,15 @@ static void TestV01Migration()
     WithStore((_, store) =>
     {
         var legacy = store.Serialize(Data(new LauncherTab { Name = "Legacy" }))
-            .Replace("\"formatVersion\": 2", "\"formatVersion\": 1", StringComparison.Ordinal)
+            .Replace("\"formatVersion\": 3", "\"formatVersion\": 1", StringComparison.Ordinal)
             .Replace("\"kind\": \"launcher\",", string.Empty, StringComparison.Ordinal);
         var migrated = store.Deserialize(legacy);
-        Equal(2, migrated.FormatVersion); Equal(LauncherTabKinds.Launcher, migrated.Tabs.Single(tab => tab.Name == "Legacy").Kind);
+        Equal(3, migrated.FormatVersion); Equal(LauncherTabKinds.Launcher, migrated.Tabs.Single(tab => tab.Name == "Legacy").Kind);
         True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.WindowsMenu));
         True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.StoreApps));
         True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.Presets));
+        True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.History));
+        True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.Frequency));
     });
 }
 
@@ -521,6 +530,8 @@ static void TestMediaKeyPresets()
 static void TestMediaPresetHierarchy()
 {
     var service = new PresetService(new StoreAppsService([new StoreAppEntry("Placeholder", "Placeholder!App")]));
+    var unrecorded = service.AvailableDefinitions().Where(item => !item.RecordLaunch).Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+    True(unrecorded.SetEquals(["desktop", "lock", "sign-out", "sleep", "shutdown", "restart", "media-previous", "media-play-pause", "media-next", "media-stop", "media-volume-down", "media-volume-up", "media-volume-mute"]));
     var media = service.Load(new PresetSettings()).OfType<GroupNode>().Single(group => group.Name == "メディア コントロール");
     True(media.Children.OfType<PresetItem>().Select(item => item.PresetId).SequenceEqual(["media-previous", "media-play-pause", "media-next", "media-stop"]));
     True(media.Children.OfType<PresetItem>().Select(item => item.Icon).SequenceEqual(["iconSet/mediaPrevious.png", "iconSet/mediaPlayPause.png", "iconSet/mediaNext.png", "iconSet/mediaStop.png"]));
@@ -587,13 +598,100 @@ static void TestBookmarkImport()
     finally { Directory.Delete(root, true); }
 }
 
+static void TestV02UsageTabMigration()
+{
+    WithStore((_, store) =>
+    {
+        var data = Data(new LauncherTab { Name = "Launcher", Order = 0 }); BuiltInTabs.Ensure(data);
+        data.Tabs.Remove(data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.History));
+        data.Tabs.Remove(data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.Frequency));
+        var legacy = store.Serialize(data).Replace("\"formatVersion\": 3", "\"formatVersion\": 2", StringComparison.Ordinal);
+        var migrated = store.Deserialize(legacy); var ordered = migrated.Tabs.OrderBy(tab => tab.Order).ToList();
+        Equal(LauncherTabKinds.History, ordered[^2].Kind); Equal(LauncherTabKinds.Frequency, ordered[^1].Kind);
+        True(ordered[^2].IsVisible); True(ordered[^1].IsVisible);
+    });
+}
+
+static void TestBookmarkSeparatorRoundTrip()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var source = Path.Combine(root, "source.html"); var exported = Path.Combine(root, "exported.html");
+        File.WriteAllText(source, "<DL><p><DT><H3>Folder</H3><DL><p><DT><A HREF=\"https://example.com\">Before</A><DT><HR><DT><A HREF=\"https://example.org\">After</A></DL><p></DL><p>");
+        var imported = new WebBookmarkService().Import(source, []).Root!;
+        var folder = (GroupNode)imported.Children.Single(); True(folder.Children[1] is SeparatorItem);
+        var tab = new LauncherTab { Name = "Web", Kind = LauncherTabKinds.Web, Children = imported.Children };
+        new WebBookmarkService().Export(exported, tab); var html = File.ReadAllText(exported); True(html.Contains("<DT><HR>", StringComparison.Ordinal));
+        File.WriteAllText(source, "<DL><p><DT><HR></DL><p>");
+        True(new WebBookmarkService().Import(source, []).Root!.Children.Single() is SeparatorItem);
+    }
+    finally { Directory.Delete(root, true); }
+}
+
+static void TestSeparatorPersistence()
+{
+    WithStore((_, store) =>
+    {
+        var web = new LauncherTab { Name = "Web", Kind = LauncherTabKinds.Web };
+        web.Children.Add(new UrlItem { Name = "Before", Target = "https://example.com", Order = 0 });
+        web.Children.Add(new SeparatorItem { Order = 1 });
+        web.Children.Add(new UrlItem { Name = "After", Target = "https://example.org", Order = 2 });
+        var restored = store.Deserialize(store.Serialize(Data(web))); new DataValidator().Validate(restored);
+        True(restored.Tabs.Single(tab => !tab.IsSystemTab).Children[1] is SeparatorItem);
+    });
+}
+
+static void TestUsageRecording()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var paths = new AppPaths(root); paths.EnsureWritable(); var node = new FileItem { Name = "Tool", Target = "C:\\Tool.exe" };
+        using var usage = new UsageService(paths, identity => identity.Kind == UsageIdentity.Node && identity.Id == node.Id ? node : null);
+        usage.RecordSuccessfulLaunch(node); usage.RecordSuccessfulLaunch(node); usage.Flush();
+        Equal(2, usage.Data.History.Count); Equal(2L, usage.Data.Frequencies.Single().TotalCount);
+        Equal("2回", ((UsageDisplayItem)usage.BuildFrequency(UsagePeriods.Recent30Days).Single()).Detail);
+        True(usage.TryExclude(node, out var error), error); Equal(0, usage.Data.History.Count); Equal(0, usage.Data.Frequencies.Count); Equal(1, usage.GetExclusions().Count);
+        usage.RecordSuccessfulLaunch(node); Equal(0, usage.Data.History.Count);
+        True(usage.TryRemoveExclusion(UsageIdentity.FromNode(node)!.Key, out error), error); usage.RecordSuccessfulLaunch(node); Equal(1, usage.Data.History.Count);
+    }
+    finally { Directory.Delete(root, true); }
+}
+
+static void TestUsagePeriods()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var paths = new AppPaths(root); paths.EnsureWritable(); var node = new UrlItem { Name = "Site", Target = "https://example.com" }; var identity = UsageIdentity.FromNode(node)!; var today = DateOnly.FromDateTime(DateTime.Now);
+        new UsageStore(paths).Save(new UsageData { Frequencies = [new UsageAggregate { Target = identity, TotalCount = 6, LastLaunchedAtUtc = DateTimeOffset.UtcNow, DailyCounts = [new DailyUsageCount { Date = today.AddDays(-30), Count = 4 }, new DailyUsageCount { Date = today, Count = 2 }] }] });
+        using var usage = new UsageService(paths, value => value.Key == identity.Key ? node : null);
+        Equal("2回", ((UsageDisplayItem)usage.BuildFrequency(UsagePeriods.Recent30Days).Single()).Detail);
+        Equal("6回", ((UsageDisplayItem)usage.BuildFrequency(UsagePeriods.AllTime).Single()).Detail); usage.Flush();
+        Equal(1, new UsageStore(paths).Load().Frequencies.Single().DailyCounts.Count);
+    }
+    finally { Directory.Delete(root, true); }
+}
+
+static void TestUnreadableUsageData()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var paths = new AppPaths(root); paths.EnsureWritable(); File.WriteAllText(paths.UsageFile, "not json");
+        using var usage = new UsageService(paths, _ => null); Equal(0, usage.Data.History.Count); Equal(0, usage.Data.Frequencies.Count); Equal(0, usage.Data.Excluded.Count);
+    }
+    finally { Directory.Delete(root, true); }
+}
+
 static void TestProfileSpecialTabExclusion()
 {
     var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
     try
     {
         var app = AppService.Create(root); app.Initialize(); var link = Path.Combine(app.Paths.ShortcutDirectory, "portable.lnk"); File.WriteAllText(link, "test");
-        var tab = new LauncherTab { Name = "Portable", Children = new ObservableCollection<LauncherNode> { new FileItem { Name = "Portable", Target = link } } }; var local = Data(tab); local.LauncherWindow.PositionMode = LauncherWindowSettings.Session; app.ReplaceData(local);
+        var tab = new LauncherTab { Name = "Portable", Children = new ObservableCollection<LauncherNode> { new FileItem { Name = "Portable", Target = link } } }; var local = Data(tab); local.LauncherWindow.PositionMode = LauncherWindowSettings.Session; local.Usage.FrequencyPeriod = UsagePeriods.AllTime; app.ReplaceData(local);
         var profile = Path.Combine(root, "profile.ogp"); app.ProfileService.Save(profile);
         using (var archive = System.IO.Compression.ZipFile.OpenRead(profile))
         {
@@ -602,7 +700,7 @@ static void TestProfileSpecialTabExclusion()
             using var reader = new StreamReader(archive.GetEntry("settings.json")!.Open()); True(!reader.ReadToEnd().Contains("launcherWindow", StringComparison.OrdinalIgnoreCase));
         }
         var loaded = app.ProfileService.Load(profile); True(loaded.Tabs.Any(item => item.Kind == LauncherTabKinds.WindowsMenu));
-        Equal(LauncherWindowSettings.Cursor, loaded.LauncherWindow.PositionMode);
+        Equal(LauncherWindowSettings.Cursor, loaded.LauncherWindow.PositionMode); Equal(UsagePeriods.AllTime, loaded.Usage.FrequencyPeriod);
         Equal(link, ((FileItem)loaded.Tabs.Single(item => item.Name == "Portable").Children.Single()).Target);
     }
     finally { Directory.Delete(root, true); }

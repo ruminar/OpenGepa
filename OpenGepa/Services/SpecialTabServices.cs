@@ -383,7 +383,7 @@ public sealed class PresetService
         foreach (var item in Catalog.Where(item => !settings.HiddenItemIds.Contains(item.Id) && IsAvailable(item)).OrderBy(item => item.Order))
         {
             var destination = EnsureGroupPath(result, item.Group);
-            destination.Add(new PresetItem { Id = RuntimeNodeIds.Create("preset:" + item.Id), PresetId = item.Id, Name = item.Name, Icon = PresetIcon(item.Id), IconSource = IconSource(item), RequiresConfirmation = item.RequiresConfirmation, Order = destination.Count });
+            destination.Add(new PresetItem { Id = RuntimeNodeIds.Create("preset:" + item.Id), PresetId = item.Id, Name = item.Name, Icon = PresetIcon(item.Id), IconSource = IconSource(item), RequiresConfirmation = item.RequiresConfirmation, RecordLaunch = item.RecordLaunch, Order = destination.Count });
         }
         return result;
     }
@@ -477,7 +477,7 @@ public sealed class PresetService
 
     private static readonly IReadOnlyList<PresetDefinition> Catalog =
     [
-        P("settings", "基本", 10, "設定", "ms-settings:"), P("search", "基本", 20, "検索", "ms-settings:search"), P("run", "基本", 30, "ファイル名を指定して実行", "explorer.exe", "shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}"), P("explorer", "基本", 40, "エクスプローラー", "explorer.exe"), P("desktop", "基本", 50, "デスクトップ", "explorer.exe", "shell:Desktop"),
+        P("settings", "基本", 10, "設定", "ms-settings:"), P("search", "基本", 20, "検索", "ms-settings:search"), P("run", "基本", 30, "ファイル名を指定して実行", "explorer.exe", "shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}"), P("explorer", "基本", 40, "エクスプローラー", "explorer.exe"), N("desktop", "基本", 50, "デスクトップ", "explorer.exe", "shell:Desktop"),
         P("documents", "ファイルと個人用", 110, "ドキュメント", "explorer.exe", "shell:Personal"), P("pictures", "ファイルと個人用", 120, "ピクチャ", "explorer.exe", "shell:My Pictures"), P("music", "ファイルと個人用", 130, "ミュージック", "explorer.exe", "shell:My Music"), P("recent", "ファイルと個人用", 140, "最近使った項目", "explorer.exe", "shell:Recent"), P("this-pc", "ファイルと個人用", 150, "PC", "explorer.exe", "shell:MyComputerFolder"), P("explorer-options", "ファイルと個人用", 160, "エクスプローラーのオプション", "control.exe", "folders"), P("recycle-bin", "ファイルと個人用", 170, "ゴミ箱を開く", "explorer.exe", "shell:RecycleBinFolder"),
         P("installed-apps", "アプリ", 210, "インストールされているアプリ", "ms-settings:appsfeatures"), P("default-apps", "アプリ", 220, "既定のアプリ", "ms-settings:defaultapps"), P("programs-features", "アプリ", 230, "プログラムと機能", "appwiz.cpl"), P("windows-features", "アプリ", 240, "Windows の機能", "OptionalFeatures.exe"), P("microsoft-store", "アプリ", 250, "Microsoft Store", "ms-windows-store:"),
         P("nvidia-control-panel", "GPU 管理", 270, "NVIDIA コントロール パネル", ""), P("amd-software", "GPU 管理", 280, "AMD Software: Adrenalin Edition", ""), P("intel-graphics-command-center", "GPU 管理", 290, "Intel Graphics Command Center", ""), P("intel-arc-control", "GPU 管理", 300, "Intel Arc Control", ""),
@@ -485,14 +485,15 @@ public sealed class PresetService
         P("network-connections", "ネットワーク", 410, "ネットワーク接続", "ncpa.cpl"), P("network-sharing-center", "ネットワーク", 420, "ネットワークと共有センター", "control.exe", "/name Microsoft.NetworkAndSharingCenter"), P("internet-options", "ネットワーク", 430, "インターネットのプロパティ", "inetcpl.cpl"), P("remote-desktop", "ネットワーク", 440, "リモート デスクトップ", "mstsc.exe"),
         P("event-viewer", "管理と診断", 510, "イベント ビューアー", "eventvwr.msc"), P("task-manager", "管理と診断", 520, "タスク マネージャー", "taskmgr.exe"), P("terminal", "管理と診断", 530, "ターミナル", "wt.exe"), P("terminal-admin", "管理と診断", 540, "ターミナル（管理者）", "wt.exe", "", true), P("system-config", "管理と診断", 550, "システム構成", "msconfig.exe"), P("services", "管理と診断", 560, "サービス", "services.msc"), P("task-scheduler", "管理と診断", 570, "タスク スケジューラ", "taskschd.msc"), P("resource-monitor", "管理と診断", 580, "リソース モニター", "resmon.exe"), P("performance-monitor", "管理と診断", 590, "パフォーマンス モニター", "perfmon.msc"), P("cert-current-user", "管理と診断", 600, "証明書（現在のユーザー）", "certmgr.msc"), P("cert-local-machine", "管理と診断", 610, "証明書（ローカル コンピューター）", "certlm.msc"), P("local-group-policy", "管理と診断", 620, "ローカル グループ ポリシー エディター", "gpedit.msc"), P("registry-editor", "管理と診断", 630, "レジストリ エディター", "regedit.exe"),
         P("windows-security", "セキュリティと更新", 710, "Windows セキュリティ", "windowsdefender:"), P("credential-manager", "セキュリティと更新", 720, "資格情報マネージャー", "control.exe", "/name Microsoft.CredentialManager"), P("windows-update", "セキュリティと更新", 730, "Windows Update", "ms-settings:windowsupdate"), P("firewall-advanced", "セキュリティと更新", 740, "Windows Defender ファイアウォール（詳細設定）", "wf.msc"),
-        P("lock", "電源とセッション", 810, "ロック", "rundll32.exe", "user32.dll,LockWorkStation", false, true), P("sign-out", "電源とセッション", 820, "サインアウト", "shutdown.exe", "/l", false, true), P("sleep", "電源とセッション", 830, "スリープ", "rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0", false, true), P("shutdown", "電源とセッション", 840, "シャットダウン", "shutdown.exe", "/s /t 0", false, true), P("restart", "電源とセッション", 850, "再起動", "shutdown.exe", "/r /t 0", false, true),
-        P("media-previous", "メディア コントロール", 860, "前の曲", ""), P("media-play-pause", "メディア コントロール", 870, "再生／一時停止", ""), P("media-next", "メディア コントロール", 880, "次の曲", ""), P("media-stop", "メディア コントロール", 890, "停止", ""), P("media-volume-down", "メディア コントロール/音量", 910, "音量を下げる", ""), P("media-volume-up", "メディア コントロール/音量", 920, "音量を上げる", ""), P("media-volume-mute", "メディア コントロール/音量", 930, "ミュート切替", ""),
+        N("lock", "電源とセッション", 810, "ロック", "rundll32.exe", "user32.dll,LockWorkStation", false, true), N("sign-out", "電源とセッション", 820, "サインアウト", "shutdown.exe", "/l", false, true), N("sleep", "電源とセッション", 830, "スリープ", "rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0", false, true), N("shutdown", "電源とセッション", 840, "シャットダウン", "shutdown.exe", "/s /t 0", false, true), N("restart", "電源とセッション", 850, "再起動", "shutdown.exe", "/r /t 0", false, true),
+        N("media-previous", "メディア コントロール", 860, "前の曲", ""), N("media-play-pause", "メディア コントロール", 870, "再生／一時停止", ""), N("media-next", "メディア コントロール", 880, "次の曲", ""), N("media-stop", "メディア コントロール", 890, "停止", ""), N("media-volume-down", "メディア コントロール/音量", 910, "音量を下げる", ""), N("media-volume-up", "メディア コントロール/音量", 920, "音量を上げる", ""), N("media-volume-mute", "メディア コントロール/音量", 930, "ミュート切替", ""),
     ];
 
-    private static PresetDefinition P(string id, string group, int order, string name, string file, string arguments = "", bool runAsAdmin = false, bool requiresConfirmation = false) => new(id, group, order, name, file, arguments, runAsAdmin, requiresConfirmation);
+    private static PresetDefinition P(string id, string group, int order, string name, string file, string arguments = "", bool runAsAdmin = false, bool requiresConfirmation = false) => new(id, group, order, name, file, arguments, runAsAdmin, requiresConfirmation, true);
+    private static PresetDefinition N(string id, string group, int order, string name, string file, string arguments = "", bool runAsAdmin = false, bool requiresConfirmation = false) => new(id, group, order, name, file, arguments, runAsAdmin, requiresConfirmation, false);
 }
 
-public sealed record PresetDefinition(string Id, string Group, int Order, string Name, string FileName, string Arguments, bool RunAsAdmin, bool RequiresConfirmation);
+public sealed record PresetDefinition(string Id, string Group, int Order, string Name, string FileName, string Arguments, bool RunAsAdmin, bool RequiresConfirmation, bool RecordLaunch);
 
 /// <summary>全ユーザー Start Menu に限定して昇格実行する同一EXE内ヘルパーです。</summary>
 public static class ElevatedWindowsMenuHelper

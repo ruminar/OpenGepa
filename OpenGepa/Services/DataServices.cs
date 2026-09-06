@@ -15,6 +15,8 @@ public sealed class AppPaths
     public string LastGoodFile => Path.Combine(BaseDirectory, "opengepa.lastgood.json");
     public string TemporaryFile => Path.Combine(BaseDirectory, "opengepa.tmp");
     public string DefaultDataFile => Path.Combine(BaseDirectory, "opengepa.default.json");
+    public string UsageFile => Path.Combine(BaseDirectory, "opengepa.usage.json");
+    public string UsageTemporaryFile => Path.Combine(BaseDirectory, "opengepa.usage.tmp");
     public string IconDirectory => Path.Combine(BaseDirectory, "icon");
     public string IconSetDirectory => Path.Combine(BaseDirectory, "iconSet");
     public string ShortcutDirectory => Path.Combine(BaseDirectory, "shortcut");
@@ -48,11 +50,12 @@ public sealed class DataValidator
     {
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion)
             throw new InvalidDataException($"未対応のformatVersionです: {data.FormatVersion}");
-        if (data.WindowsMenu is null || data.Presets is null || data.LauncherWindow is null) throw new InvalidDataException("ランチャー設定がありません。");
+        if (data.WindowsMenu is null || data.Presets is null || data.LauncherWindow is null || data.Usage is null) throw new InvalidDataException("ランチャー設定がありません。");
         if (data.Presets.HiddenItemIds is null || data.Presets.HiddenItemIds.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("プリセットの表示設定が不正です。");
         AppearanceRules.Validate(data.Appearance);
         ValidateItemLaunch(data.ItemLaunch);
         ValidateLauncherWindow(data.LauncherWindow);
+        if (!UsagePeriods.IsKnown(data.Usage.FrequencyPeriod)) throw new InvalidDataException("使用頻度の集計期間が不正です。");
         ValidateDefaultIcons(data.DefaultIcons);
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ValidateNames(data.Tabs.Where(x => !x.IsSystemTab).Select(x => x.Name), "LauncherTab");
@@ -75,10 +78,11 @@ public sealed class DataValidator
 
     private static void ValidateNodes(IEnumerable<LauncherNode> source, HashSet<string> ids, HashSet<string> ancestors, string tabKind)
     {
-        var nodes = source.ToList(); ValidateNames(nodes.Select(NodeLabel), "同一Group"); ValidateOrders(nodes.Select(x => x.Order), "同一Group");
+        var nodes = source.ToList(); ValidateNames(nodes.Where(node => node is not SeparatorItem).Select(NodeLabel), "同一Group"); ValidateOrders(nodes.Select(x => x.Order), "同一Group");
         foreach (var node in nodes)
         {
             ValidateId(node.Id, ids); ValidateNode(node, tabKind);
+            if (node is SeparatorItem && node.Icon is not null) throw new InvalidDataException("区切り線にアイコンは設定できません。");
             ValidateIcon(node.Icon, NodeLabel(node));
             if (node is GroupNode group)
             {
@@ -99,6 +103,7 @@ public sealed class DataValidator
     {
         switch (node)
         {
+            case SeparatorItem: break;
             case GroupNode group: group.Name = Required(group.Name); break;
             case NamedLauncherItem item:
                 item.Name = Required(item.Name);
@@ -120,7 +125,7 @@ public sealed class DataValidator
             default: throw new InvalidDataException("未対応のランチャー項目です。");
         }
     }
-    public static string NodeLabel(LauncherNode node) => node switch { DirectoryItem directory => directory.Target, GroupNode group => group.Name, NamedLauncherItem item => item.Name, StoreAppItem store => store.Name, PresetItem preset => preset.Name, _ => "項目" };
+    public static string NodeLabel(LauncherNode node) => node switch { SeparatorItem => "区切り線", DirectoryItem directory => directory.Target, GroupNode group => group.Name, NamedLauncherItem item => item.Name, StoreAppItem store => store.Name, PresetItem preset => preset.Name, UsageDisplayItem usage => usage.Name, _ => "項目" };
     private static void ValidateDefaultIcons(DefaultIconSettings icons)
     {
         ValidateIcon(icons.GroupIcon, "Group既定"); ValidateIcon(icons.DirectoryIcon, "Directory既定"); ValidateIcon(icons.UrlIcon, "URL既定"); ValidateIcon(icons.TrayIcon, "トレイ既定");
@@ -233,14 +238,16 @@ public sealed class DataStore
     {
         if (data.FormatVersion == 1)
         {
-            data.FormatVersion = OpenGepaData.CurrentFormatVersion;
+            data.FormatVersion = 2;
             foreach (var tab in data.Tabs ?? []) if (string.IsNullOrWhiteSpace(tab.Kind)) tab.Kind = LauncherTabKinds.Launcher;
         }
+        if (data.FormatVersion == 2) data.FormatVersion = OpenGepaData.CurrentFormatVersion;
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion) return;
         data.Tabs ??= [];
         data.WindowsMenu ??= new WindowsMenuSettings();
         data.Presets ??= new PresetSettings();
         data.LauncherWindow ??= new LauncherWindowSettings();
+        data.Usage ??= new UsageSettings();
         data.Presets.HiddenItemIds ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var tab in data.Tabs) if (string.IsNullOrWhiteSpace(tab.Kind)) tab.Kind = LauncherTabKinds.Launcher;
         BuiltInTabs.Ensure(data);

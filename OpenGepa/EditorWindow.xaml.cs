@@ -70,11 +70,18 @@ public partial class EditorWindow : Window
         AddNode(new DirectoryItem { Target = folder.SelectedPath }, true, true);
     }
     private void AddUrl_Click(object sender, RoutedEventArgs e) => AddNode(new UrlItem(), true, true);
+    private void AddSeparator_Click(object sender, RoutedEventArgs e) => AddNode(new SeparatorItem(), false, true);
     private void AddNode(LauncherNode node, bool target, bool chooseDestination = false, string? initialDestinationId = null, bool initialDestinationSpecified = false)
     {
         if (Tab is null) return;
-        if (IsWebTab && node is not GroupNode and not UrlItem) return;
+        if (IsWebTab && node is not GroupNode and not UrlItem and not SeparatorItem) return;
         var currentDestinationId = chooseDestination ? initialDestinationSpecified ? initialDestinationId : DefaultDestinationId() : GetPrimarySelectedNode() is GroupNode selectedGroup ? selectedGroup.Id : null;
+        if (node is SeparatorItem)
+        {
+            var separatorTabId = Tab.Id; var separatorParentId = currentDestinationId;
+            Commit(data => { var tab = data.Tabs.First(t => t.Id == separatorTabId); var collection = separatorParentId is null ? tab.Children : FindGroup(tab.Children, separatorParentId)!.Children; node.Order = collection.Count; collection.Add(node); }, separatorTabId);
+            return;
+        }
         var directory = node is DirectoryItem;
         var d = new ItemDialog("項目を追加", DataValidator.NodeLabel(node), node switch { NamedLauncherItem i => i.Target, DirectoryItem i => i.Target, _ => "" }, target, chooseDestination ? DestinationOptions.Build(Tab) : null, currentDestinationId, !directory) { Owner = this }; if (d.ShowDialog() != true) return;
         if (node is GroupNode group) group.Name = d.ItemName; else if (node is NamedLauncherItem item) { item.Name = d.ItemName; item.Target = d.Target; } else if (node is DirectoryItem directoryItem) directoryItem.Target = d.Target;
@@ -104,7 +111,7 @@ public partial class EditorWindow : Window
     private void RenameSelectedNode()
     {
         if (Tab is null || GetSingleSelectedNode() is not LauncherNode selected) return;
-        if (selected is DirectoryItem) return;
+        if (selected is DirectoryItem or SeparatorItem) return;
         Dispatcher.BeginInvoke(() => BeginInlineRename(selected));
     }
     private void ChangeSelectedTarget()
@@ -142,7 +149,7 @@ public partial class EditorWindow : Window
     private void Delete_Click(object sender, RoutedEventArgs e) => DeleteSelected();
     private void EditorTree_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key == Key.F2 && e.OriginalSource is not System.Windows.Controls.TextBox && GetSingleSelectedNode() is LauncherNode node && node is not DirectoryItem) { BeginInlineRename(node); e.Handled = true; return; }
+        if (e.Key == Key.F2 && e.OriginalSource is not System.Windows.Controls.TextBox && GetSingleSelectedNode() is LauncherNode node && node is not DirectoryItem and not SeparatorItem) { BeginInlineRename(node); e.Handled = true; return; }
         if (e.Key == Key.Delete && e.OriginalSource is not System.Windows.Controls.TextBox) { DeleteSelected(); e.Handled = true; }
     }
 
@@ -243,15 +250,18 @@ public partial class EditorWindow : Window
         var menu = new ContextMenu();
         menu.Items.Add(ContextMenuItem("すべて折りたたむ", CollapseAll, true)); menu.Items.Add(new Separator());
         if (node is GroupNode) { AddCreationItems(menu); menu.Items.Add(new Separator()); }
-        if (node is not DirectoryItem) menu.Items.Add(ContextMenuItem("名前を変更", RenameSelectedNode, single));
+        if (node is not DirectoryItem and not SeparatorItem) menu.Items.Add(ContextMenuItem("名前を変更", RenameSelectedNode, single));
         if (node is FileItem) menu.Items.Add(ContextMenuItem("起動対象を変更", ChangeSelectedTarget, single));
         else if (node is DirectoryItem) menu.Items.Add(ContextMenuItem("開く場所を変更", ChangeSelectedTarget, single));
         else if (node is UrlItem) { menu.Items.Add(ContextMenuItem("URLを変更", ChangeSelectedTarget, single)); menu.Items.Add(ContextMenuItem("ページタイトルを名前に設定", FetchPageTitle, single)); }
-        menu.Items.Add(new Separator());
-        menu.Items.Add(ContextMenuItem("アイコンを変更", () => ChangeIcon_Click(this, new RoutedEventArgs()), single));
-        if (node is FileItem) menu.Items.Add(ContextMenuItem("アイコンを再取得", () => RetryIcon_Click(this, new RoutedEventArgs()), single));
-        if (node is UrlItem) menu.Items.Add(ContextMenuItem("サイトのアイコンを取得", () => { if (Tab is not null && GetSingleSelectedNode() is UrlItem url) _ = TryAddUrlIcon(url.Id, url.Target, url.Name, Tab.Id); }, single));
-        menu.Items.Add(ContextMenuItem("アイコンを標準に戻す", () => ResetIcon_Click(this, new RoutedEventArgs()), single));
+        if (node is not SeparatorItem)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(ContextMenuItem("アイコンを変更", () => ChangeIcon_Click(this, new RoutedEventArgs()), single));
+            if (node is FileItem) menu.Items.Add(ContextMenuItem("アイコンを再取得", () => RetryIcon_Click(this, new RoutedEventArgs()), single));
+            if (node is UrlItem) menu.Items.Add(ContextMenuItem("サイトのアイコンを取得", () => { if (Tab is not null && GetSingleSelectedNode() is UrlItem url) _ = TryAddUrlIcon(url.Id, url.Target, url.Name, Tab.Id); }, single));
+            menu.Items.Add(ContextMenuItem("アイコンを標準に戻す", () => ResetIcon_Click(this, new RoutedEventArgs()), single));
+        }
         menu.Items.Add(new Separator());
         menu.Items.Add(ContextMenuItem("削除", DeleteSelected, true));
         container.ContextMenu = menu; menu.IsOpen = true; e.Handled = true;
@@ -271,6 +281,7 @@ public partial class EditorWindow : Window
     private void AddCreationItems(ContextMenu menu)
     {
         menu.Items.Add(ContextMenuItem("グループを追加", () => AddGroup_Click(this, new RoutedEventArgs()), true));
+        menu.Items.Add(ContextMenuItem("区切り線を追加", () => AddSeparator_Click(this, new RoutedEventArgs()), true));
         if (IsWebTab)
         {
             menu.Items.Add(ContextMenuItem("URLを追加", () => AddUrl_Click(this, new RoutedEventArgs()), true));
@@ -377,7 +388,7 @@ public partial class EditorWindow : Window
         var selectedIds = selected.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var sources = selected.Where(node => !HasSelectedAncestor(sourceTab.Children, node.Id, selectedIds)).OrderBy(node => NodeOrder(sourceTab.Children, node.Id)).ToList();
         if (sources.Count == 0) return;
-        if (targetTab.IsWebTab && sources.Any(node => node is not GroupNode and not UrlItem)) throw new InvalidDataException("WebランチャーにはURL以外を移動できません。");
+        if (targetTab.IsWebTab && sources.Any(node => node is not GroupNode and not UrlItem and not SeparatorItem)) throw new InvalidDataException("WebランチャーにはURLと区切り線以外を移動できません。");
         if (sourceTabId == targetTabId && sources.Any(source => source.Id == parentId || source is GroupNode group && parentId is not null && FindNode(group.Children, parentId) is not null))
             throw new InvalidDataException("自分自身または子孫のGroupへは移動できません。");
         var newCollection = parentId is null ? targetTab.Children : (FindNode(targetTab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("移動先Groupが見つかりません。");

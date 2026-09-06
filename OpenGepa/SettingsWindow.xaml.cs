@@ -15,7 +15,7 @@ public sealed class PresetVisibilityRow
 public partial class SettingsWindow : Window
 {
     private readonly AppService _app; private bool _refreshing;
-    public SettingsWindow(AppService app) { InitializeComponent(); _app = app; }
+    public SettingsWindow(AppService app) { InitializeComponent(); _app = app; _app.UsageDataChanged += (_, _) => Dispatcher.BeginInvoke(() => RefreshData()); }
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { if (!App.IsExiting) { e.Cancel = true; Hide(); } }
     private void Window_StateChanged(object? sender, EventArgs e) { if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Hide(); } }
     public void RefreshData(string? selectedTabId = null, bool restoreFocus = false)
@@ -35,6 +35,7 @@ public partial class SettingsWindow : Window
         WindowsMenuCurrentEditCheck.IsChecked = _app.Data.WindowsMenu.AllowCurrentUserEdit; WindowsMenuAllUsersEditCheck.IsChecked = _app.Data.WindowsMenu.AllowAllUsersEdit;
         FoldersFirstRadio.IsChecked = _app.Data.WindowsMenu.FoldersFirst; ShortcutsFirstRadio.IsChecked = !_app.Data.WindowsMenu.FoldersFirst;
         PresetItemsList.ItemsSource = _app.PresetService.AvailableDefinitions().Select(item => new PresetVisibilityRow { Id = item.Id, Name = $"{item.Group.Replace("/", " / ")} / {item.Name}", IsVisible = !_app.Data.Presets.HiddenItemIds.Contains(item.Id) }).ToList();
+        UsageExclusionsList.ItemsSource = _app.UsageService.GetExclusions();
         _refreshing = false; UpdateMoveButtons();
         if (restoreFocus && TabsList.SelectedItem is LauncherTab selected)
             Dispatcher.BeginInvoke(() => { if (TabsList.ItemContainerGenerator.ContainerFromItem(selected) is System.Windows.Controls.ListBoxItem item) item.Focus(); }, System.Windows.Threading.DispatcherPriority.Input);
@@ -130,6 +131,12 @@ public partial class SettingsWindow : Window
     }
     private void Save_Click(object sender, RoutedEventArgs e) { var d = new SaveFileDialog { Filter = "OpenGepa Profile|*.ogp", FileName = $"OpenGepaProfile_{DateTime.Now:yyyyMMdd_HHmmssff}.ogp" }; if (d.ShowDialog(this) == true) try { _app.ProfileService.Save(d.FileName); MessageBox.Show("Profileを保存しました。", "OpenGepa"); } catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); } }
     private void Load_Click(object sender, RoutedEventArgs e) { var d = new OpenFileDialog { Filter = "OpenGepa Profile|*.ogp" }; if (d.ShowDialog(this) != true || MessageBox.Show("現在の設定をProfileで置き換えますか？\n\nProfileには実行ファイル、スクリプト、ショートカットへの参照が含まれることがあります。信頼できるProfileだけを読み込んでください。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return; try { _app.ReplaceData(_app.ProfileService.Load(d.FileName)); RefreshData(); } catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); } }
+    private void ClearHistory_Click(object sender, RoutedEventArgs e) { if (MessageBox.Show("起動履歴をすべて削除しますか？\nこの操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes) ApplyUsageChange(_app.UsageService.TryClearHistory); }
+    private void ClearFrequency_Click(object sender, RoutedEventArgs e) { if (MessageBox.Show("使用頻度をすべてリセットしますか？\nこの操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes) ApplyUsageChange(_app.UsageService.TryClearFrequency); }
+    private void ClearUsage_Click(object sender, RoutedEventArgs e) { if (MessageBox.Show("起動履歴と使用頻度をすべて削除しますか？\nこの操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes) ApplyUsageChange(_app.UsageService.TryClearAll); }
+    private void RemoveExclusion_Click(object sender, RoutedEventArgs e) { if (UsageExclusionsList.SelectedItem is UsageExclusionView row) ApplyUsageChange((out string error) => _app.UsageService.TryRemoveExclusion(row.Key, out error)); }
+    private void ApplyUsageChange(TryUsageChange change) { if (!change(out var error)) MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); RefreshData(); }
+    private delegate bool TryUsageChange(out string error);
     private void Ok_Click(object sender, RoutedEventArgs e) => Hide();
     private void Commit(Action<OpenGepaData> action, string? selectedTabId = null, bool restoreFocus = false) { if (!_app.TryCommit(action, out var error)) MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); RefreshData(selectedTabId, restoreFocus); }
 }

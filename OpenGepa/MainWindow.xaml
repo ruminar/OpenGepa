@@ -36,14 +36,21 @@
         <DataTemplate DataType="{x:Type models:PresetItem}">
             <Grid ClipToBounds="False"><Border Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType={x:Type TreeViewItem}}, Converter={StaticResource TreeRowWidthConverter}, ConverterParameter=32}" Style="{StaticResource ItemNodeBorder}"/><StackPanel Margin="3" Orientation="Horizontal"><Grid Width="20" Height="20" Margin="0,0,8,0"><TextBlock Text="{Binding DisplayGlyph}" HorizontalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/><Image Source="{Binding ., Converter={StaticResource NodeIconConverter}}"/></Grid><TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/></StackPanel></Grid>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type models:SeparatorItem}">
+            <Grid Height="28" ClipToBounds="False"><Border Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType={x:Type TreeViewItem}}, Converter={StaticResource TreeRowWidthConverter}, ConverterParameter=32}" Style="{StaticResource ItemNodeBorder}"/><Border Height="1" Margin="8,0,0,0" VerticalAlignment="Center" Background="{DynamicResource BorderBrush}"/></Grid>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type models:UsageDisplayItem}">
+            <Grid ClipToBounds="False"><Border Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType={x:Type TreeViewItem}}, Converter={StaticResource TreeRowWidthConverter}, ConverterParameter=32}" Style="{StaticResource ItemNodeBorder}"/><Grid Margin="3"><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Grid Width="20" Height="20"><TextBlock Text="▤" HorizontalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/><Image Source="{Binding ., Converter={StaticResource NodeIconConverter}}"/></Grid><TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" Foreground="{DynamicResource ItemForegroundBrush}"/><TextBlock Grid.Column="2" Text="{Binding Detail}" Margin="10,0,4,0" VerticalAlignment="Center" Foreground="{DynamicResource MutedForegroundBrush}"/></Grid></Grid>
+        </DataTemplate>
     </Window.Resources>
     <Grid Background="{DynamicResource AppBackgroundBrush}">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
         <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
         <Grid Grid.ColumnSpan="2" Margin="10,8,10,0">
-            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBox x:Name="SearchText" Height="26" VerticalContentAlignment="Center" Padding="6,0" TextChanged="SearchText_Changed" ToolTip="表示名で絞り込み"><TextBox.ContextMenu><ContextMenu><MenuItem Header="クリア" Click="ClearSearch_Click"/><Separator/><MenuItem Command="{x:Static ApplicationCommands.Cut}" Header="切り取り"/><MenuItem Command="{x:Static ApplicationCommands.Copy}" Header="コピー"/><MenuItem Command="{x:Static ApplicationCommands.Paste}" Header="貼り付け"/></ContextMenu></TextBox.ContextMenu></TextBox>
-            <ToggleButton x:Name="PinToggle" Grid.Column="1" Margin="8,0,0,0" Width="30" Content="📌" Style="{StaticResource PinToggleStyle}" Checked="PinToggle_Changed" Unchecked="PinToggle_Changed" ToolTip="ランチャーを固定表示"/>
+            <ComboBox x:Name="FrequencyPeriodCombo" Grid.Column="1" Margin="8,0,0,0" Width="100" Height="26" SelectedValuePath="Tag" SelectionChanged="FrequencyPeriodCombo_SelectionChanged" Visibility="Collapsed"><ComboBoxItem Content="過去30日" Tag="recent30Days"/><ComboBoxItem Content="全期間" Tag="allTime"/></ComboBox>
+            <ToggleButton x:Name="PinToggle" Grid.Column="2" Margin="8,0,0,0" Width="30" Content="📌" Style="{StaticResource PinToggleStyle}" Checked="PinToggle_Changed" Unchecked="PinToggle_Changed" ToolTip="ランチャーを固定表示"/>
         </Grid>
         <Border Grid.Row="1" Margin="10" Background="{DynamicResource PanelBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
             <Grid>

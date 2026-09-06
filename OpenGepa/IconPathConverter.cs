@@ -38,6 +38,7 @@ public sealed class NodeIconConverter : IValueConverter
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not LauncherNode node) return null;
+        if (node is UsageDisplayItem { CurrentItem: not null } usage) return Convert(usage.CurrentItem, targetType, parameter, culture);
         if (node is FileItem { IsTargetMissing: true }) { var image = Imaging.CreateBitmapSourceFromHIcon(System.Drawing.SystemIcons.Error.Handle, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(32, 32)); image.Freeze(); return image; }
         var size = parameter is not null && int.TryParse(parameter.ToString(), out var requested) ? requested : 32;
         var runtimeIcon = node switch

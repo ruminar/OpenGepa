@@ -21,17 +21,31 @@ public abstract class ObservableModel : INotifyPropertyChanged
 
 public sealed class OpenGepaData : ObservableModel
 {
-    public const int CurrentFormatVersion = 2;
+    public const int CurrentFormatVersion = 3;
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public string? SelectedTabId { get; set; }
     public bool IsLauncherPinned { get; set; }
     public AppearanceSettings Appearance { get; set; } = new();
     public ItemLaunchSettings ItemLaunch { get; set; } = new();
     public LauncherWindowSettings LauncherWindow { get; set; } = new();
+    public UsageSettings Usage { get; set; } = new();
     public DefaultIconSettings DefaultIcons { get; set; } = new();
     public WindowsMenuSettings WindowsMenu { get; set; } = new();
     public PresetSettings Presets { get; set; } = new();
     public ObservableCollection<LauncherTab> Tabs { get; set; } = [];
+}
+
+public static class UsagePeriods
+{
+    public const string Recent30Days = "recent30Days";
+    public const string AllTime = "allTime";
+    public static bool IsKnown(string? value) => value is Recent30Days or AllTime;
+}
+
+public sealed class UsageSettings : ObservableModel
+{
+    private string _frequencyPeriod = UsagePeriods.Recent30Days;
+    public string FrequencyPeriod { get => _frequencyPeriod; set => SetField(ref _frequencyPeriod, value); }
 }
 
 /// <summary>ローカル環境の Start Menu を操作できるかどうかを保持します。</summary>
@@ -58,16 +72,20 @@ public static class LauncherTabKinds
     public const string WindowsMenu = "windowsMenu";
     public const string StoreApps = "storeApps";
     public const string Presets = "presets";
-    public static bool IsKnown(string? kind) => kind is Launcher or Web or WindowsMenu or StoreApps or Presets;
-    public static bool IsSystem(string? kind) => kind is WindowsMenu or StoreApps or Presets;
+    public const string History = "history";
+    public const string Frequency = "frequency";
+    public static bool IsKnown(string? kind) => kind is Launcher or Web or WindowsMenu or StoreApps or Presets or History or Frequency;
+    public static bool IsSystem(string? kind) => kind is WindowsMenu or StoreApps or Presets or History or Frequency;
 }
 
-/// <summary>環境依存の3タブは常にローカル設定にのみ存在し、Profileへは送られません。</summary>
+/// <summary>組み込みタブは常にローカル設定にのみ存在し、Profileへは送られません。</summary>
 public static class BuiltInTabs
 {
     public const string WindowsMenuId = "10000000-0000-0000-0000-000000000001";
     public const string StoreAppsId = "10000000-0000-0000-0000-000000000002";
     public const string PresetsId = "10000000-0000-0000-0000-000000000003";
+    public const string HistoryId = "10000000-0000-0000-0000-000000000004";
+    public const string FrequencyId = "10000000-0000-0000-0000-000000000005";
 
     public static void Ensure(OpenGepaData data)
     {
@@ -77,7 +95,9 @@ public static class BuiltInTabs
         {
             (WindowsMenuId, LauncherTabKinds.WindowsMenu, "Windows Menu"),
             (StoreAppsId, LauncherTabKinds.StoreApps, "ストアアプリ"),
-            (PresetsId, LauncherTabKinds.Presets, "Windows主要操作")
+            (PresetsId, LauncherTabKinds.Presets, "Windows主要操作"),
+            (HistoryId, LauncherTabKinds.History, "起動履歴"),
+            (FrequencyId, LauncherTabKinds.Frequency, "使用頻度")
         })
         {
             var (tab, created) = Ensure(data, id, kind, name);
@@ -174,6 +194,8 @@ public sealed class LauncherTab : ObservableModel
 [JsonDerivedType(typeof(WindowsMenuShortcutItem), "runtimeWindowsShortcut")]
 [JsonDerivedType(typeof(StoreAppItem), "runtimeStoreApp")]
 [JsonDerivedType(typeof(PresetItem), "runtimePreset")]
+[JsonDerivedType(typeof(SeparatorItem), "separator")]
+[JsonDerivedType(typeof(UsageDisplayItem), "runtimeUsage")]
 public abstract class LauncherNode : ObservableModel
 {
     private int _order; private string? _icon;
@@ -206,6 +228,11 @@ public sealed class DirectoryItem : LauncherNode
     private string _target = string.Empty;
     public string Target { get => _target; set => SetField(ref _target, value); }
     public override string DisplayGlyph => "▰";
+}
+
+public sealed class SeparatorItem : LauncherNode
+{
+    public override string DisplayGlyph => "";
 }
 
 public enum WindowsMenuSource { CurrentUser, AllUsers }
@@ -246,6 +273,7 @@ public sealed class PresetItem : LauncherNode
     public string Name { get => _name; set => SetField(ref _name, value); }
     [JsonIgnore] public string? IconSource { get; set; }
     [JsonIgnore] public bool RequiresConfirmation { get; set; }
+    [JsonIgnore] public bool RecordLaunch { get; set; }
     public override string DisplayGlyph => PresetId switch
     {
         "media-previous" => "⏮",
@@ -257,6 +285,19 @@ public sealed class PresetItem : LauncherNode
         "media-volume-mute" => "🔇",
         _ => "⚙"
     };
+}
+
+public sealed class UsageDisplayItem : LauncherNode
+{
+    public string Name { get; set; } = string.Empty;
+    public string Detail { get; set; } = string.Empty;
+    public bool IsAvailable { get; set; }
+    [JsonIgnore] public string TargetKind { get; set; } = string.Empty;
+    [JsonIgnore] public string TargetId { get; set; } = string.Empty;
+    [JsonIgnore] public string? TargetSource { get; set; }
+    [JsonIgnore] public LauncherNode? CurrentItem { get; set; }
+    [JsonIgnore] public string UsageKey { get; set; } = string.Empty;
+    public override string DisplayGlyph => IsAvailable ? "▤" : "×";
 }
 
 public static class LauncherTabCopy
@@ -279,6 +320,7 @@ public static class LauncherTabCopy
             FileItem => new FileItem(),
             DirectoryItem => new DirectoryItem(),
             UrlItem => new UrlItem(),
+            SeparatorItem => new SeparatorItem(),
             _ => throw new InvalidDataException("未対応のランチャー項目です。")
         };
         if (copy is GroupNode copyGroup && source is GroupNode sourceGroup) copyGroup.Name = sourceGroup.Name;
