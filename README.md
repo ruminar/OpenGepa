@@ -4,6 +4,8 @@ OpenGepaは、Windowsのタスクトレイに常駐する個人向けランチ�
 
 設定ファイルとアイコンはアプリと同じディレクトリに保存されます。配布ZIPを展開したフォルダごと移動・コピーすれば、ランチャー構成をまとめて移行できます。
 
+<img width="466" height="593" alt="image" src="https://github.com/user-attachments/assets/54452188-a812-4a82-9226-d606a0556c84" />
+
 ## 対応環境
 
 - Windows 11 x64
@@ -165,3 +167,7 @@ Profileを読み込むと、現在のアプリ／Webランチャー設定は読�
 ## ライセンス
 
 [MIT License](LICENSE)
+
+## 宣伝画像
+
+<img width="1536" height="1024" alt="OpenGepa宣伝画像" src="https://github.com/user-attachments/assets/0b862320-982a-494b-9b26-8c4b942833f3" />
