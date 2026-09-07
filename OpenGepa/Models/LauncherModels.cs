@@ -291,6 +291,9 @@ public sealed class UsageDisplayItem : LauncherNode
 {
     public string Name { get; set; } = string.Empty;
     public string Detail { get; set; } = string.Empty;
+    public string? TimeDetail { get; set; }
+    public string? CountDetail { get; set; }
+    public string? StatusDetail { get; set; }
     public bool IsAvailable { get; set; }
     [JsonIgnore] public string TargetKind { get; set; } = string.Empty;
     [JsonIgnore] public string TargetId { get; set; } = string.Empty;

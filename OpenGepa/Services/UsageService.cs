@@ -218,10 +218,11 @@ public sealed class UsageService : IDisposable
         {
             var label = dateGroup.Key == today ? "今日" : dateGroup.Key == today.AddDays(-1) ? "昨日" : dateGroup.Key.ToString("yyyy年M月d日");
             var group = new GroupNode { Id = RuntimeNodeIds.Create("history-group:" + dateGroup.Key.ToString("O")), Name = label, Order = groupOrder++ };
-            foreach (var record in dateGroup)
+            foreach (var targetGroup in dateGroup.GroupBy(record => record.Target.Key).OrderByDescending(records => records.Max(record => record.OccurredAtUtc)))
             {
-                var current = _resolve(record.Target); var available = current is not null;
-                group.Children.Add(new UsageDisplayItem { Id = record.EventId, TargetKind = record.Target.Kind, TargetId = record.Target.Id, TargetSource = record.Target.Source, UsageKey = record.Target.Key, Name = available ? DataValidator.NodeLabel(current!) : record.Name, Icon = available ? current!.Icon : record.Icon, CurrentItem = current, IsAvailable = available, Detail = record.OccurredAtUtc.ToLocalTime().ToString("HH:mm") + (available ? string.Empty : "  利用不可"), Order = group.Children.Count });
+                var latest = targetGroup.OrderByDescending(record => record.OccurredAtUtc).First(); var current = _resolve(latest.Target); var available = current is not null;
+                var time = latest.OccurredAtUtc.ToLocalTime().ToString("HH:mm"); var count = targetGroup.Count();
+                group.Children.Add(new UsageDisplayItem { Id = latest.EventId, TargetKind = latest.Target.Kind, TargetId = latest.Target.Id, TargetSource = latest.Target.Source, UsageKey = latest.Target.Key, Name = available ? DataValidator.NodeLabel(current!) : latest.Name, Icon = available ? current!.Icon : latest.Icon, CurrentItem = current, IsAvailable = available, Detail = $"最終 {time}  {count:N0}回", TimeDetail = $"最終 {time}", CountDetail = $"{count:N0}回", StatusDetail = available ? null : "利用不可", Order = group.Children.Count });
             }
             result.Add(group);
         }
@@ -240,7 +241,7 @@ public sealed class UsageService : IDisposable
         var rows = aggregates.Select(item => (Item: item, Current: _resolve(item.Target), Count: period == UsagePeriods.AllTime ? item.TotalCount : item.DailyCounts.Where(day => day.Date >= from && day.Date <= today).Sum(day => (long)day.Count)))
             .Where(row => row.Current is not null && row.Count > 0)
             .OrderByDescending(row => row.Count).ThenByDescending(row => row.Item.LastLaunchedAtUtc).ThenBy(row => DataValidator.NodeLabel(row.Current!), StringComparer.OrdinalIgnoreCase).ToList();
-        return new ObservableCollection<LauncherNode>(rows.Select((row, index) => new UsageDisplayItem { Id = RuntimeNodeIds.Create($"frequency:{row.Item.Target.Key}"), TargetKind = row.Item.Target.Kind, TargetId = row.Item.Target.Id, TargetSource = row.Item.Target.Source, UsageKey = row.Item.Target.Key, Name = DataValidator.NodeLabel(row.Current!), Icon = row.Current!.Icon, CurrentItem = row.Current, IsAvailable = true, Detail = $"{row.Count:N0}回", Order = index }));
+        return new ObservableCollection<LauncherNode>(rows.Select((row, index) => new UsageDisplayItem { Id = RuntimeNodeIds.Create($"frequency:{row.Item.Target.Key}"), TargetKind = row.Item.Target.Kind, TargetId = row.Item.Target.Id, TargetSource = row.Item.Target.Source, UsageKey = row.Item.Target.Key, Name = DataValidator.NodeLabel(row.Current!), Icon = row.Current!.Icon, CurrentItem = row.Current, IsAvailable = true, Detail = $"{row.Count:N0}回", CountDetail = $"{row.Count:N0}回", Order = index }));
     }
 
     public IReadOnlyList<UsageExclusionView> GetExclusions()

@@ -25,8 +25,11 @@ var tests = new (string Name, Action Run)[]
     ("Item launch click defaults", TestItemLaunchClickDefaults),
     ("Launcher position mode stays local", TestLauncherPositionMode),
     ("Modified clicks do not launch items", TestModifiedClickRules),
+    ("Launcher separator interaction requires Ctrl", TestSeparatorInteractionRules),
+    ("Tab strip widens only for vertical scrolling", TestTabStripLayoutRules),
     ("Launcher reorder keeps scope", TestLauncherReorderRules),
     ("Launcher tab duplication", TestLauncherTabDuplication),
+    ("Launcher tab deletion removes data and selects replacement", TestLauncherTabDeletion),
     ("Cross-launcher move", TestCrossLauncherMove),
     ("Small icon size is preserved", TestSmallIconSizeIsPreserved),
     ("Directory scan root group", TestDirectoryScanRootGroup),
@@ -598,6 +601,32 @@ static void TestBookmarkImport()
     finally { Directory.Delete(root, true); }
 }
 
+static void TestLauncherTabDeletion()
+{
+    var launcher = new LauncherTab { Name = "Launcher", Order = 0, Children = new ObservableCollection<LauncherNode> { new FileItem { Name = "Tool", Target = "C:\\Tool.exe" } } };
+    var history = new LauncherTab { Name = "起動履歴", Kind = LauncherTabKinds.History, Order = 1 };
+    var data = new OpenGepaData { SelectedTabId = launcher.Id, Tabs = new ObservableCollection<LauncherTab> { launcher, history } };
+    True(LauncherTabDeletionRules.TryDelete(data, launcher.Id));
+    Equal(1, data.Tabs.Count); Equal(history.Id, data.SelectedTabId); Equal(0, history.Order);
+    True(!LauncherTabDeletionRules.TryDelete(data, history.Id));
+    True(LauncherTabDeletionRules.ConfirmationMessage(launcher).Contains("すべてのGroup、項目、区切り線"));
+    True(LauncherTabDeletionRules.ConfirmationMessage(launcher).Contains("元に戻せません"));
+}
+
+static void TestSeparatorInteractionRules()
+{
+    True(!SeparatorInteractionRules.AllowsLauncherSelection(System.Windows.Input.ModifierKeys.None));
+    True(!SeparatorInteractionRules.AllowsLauncherSelection(System.Windows.Input.ModifierKeys.Shift));
+    True(SeparatorInteractionRules.AllowsLauncherSelection(System.Windows.Input.ModifierKeys.Control));
+    True(SeparatorInteractionRules.AllowsLauncherSelection(System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift));
+}
+
+static void TestTabStripLayoutRules()
+{
+    Equal(88d, TabStripLayoutRules.GetColumnWidth(false));
+    Equal(98d, TabStripLayoutRules.GetColumnWidth(true));
+}
+
 static void TestV02UsageTabMigration()
 {
     WithStore((_, store) =>
@@ -651,6 +680,7 @@ static void TestUsageRecording()
         using var usage = new UsageService(paths, identity => identity.Kind == UsageIdentity.Node && identity.Id == node.Id ? node : null);
         usage.RecordSuccessfulLaunch(node); usage.RecordSuccessfulLaunch(node); usage.Flush();
         Equal(2, usage.Data.History.Count); Equal(2L, usage.Data.Frequencies.Single().TotalCount);
+        var historyItem = (UsageDisplayItem)((GroupNode)usage.BuildHistory().Single()).Children.Single(); Equal("2回", historyItem.CountDetail); True(historyItem.TimeDetail!.StartsWith("最終 ", StringComparison.Ordinal));
         Equal("2回", ((UsageDisplayItem)usage.BuildFrequency(UsagePeriods.Recent30Days).Single()).Detail);
         True(usage.TryExclude(node, out var error), error); Equal(0, usage.Data.History.Count); Equal(0, usage.Data.Frequencies.Count); Equal(1, usage.GetExclusions().Count);
         usage.RecordSuccessfulLaunch(node); Equal(0, usage.Data.History.Count);

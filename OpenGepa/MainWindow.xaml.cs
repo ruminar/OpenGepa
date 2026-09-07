@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _deactivationTimer;
     private bool _recentlyDeactivated;
     private bool _hasSessionPosition;
+    private bool _tabStripWidthRefreshQueued;
     public MainWindow(AppService app)
     {
         InitializeComponent(); _app = app;
@@ -50,7 +51,7 @@ public partial class MainWindow : Window
         _renderedTabId = selected?.Id; if (selected is not null) { _app.GetDisplayChildren(selected, refreshEnvironment); _app.RequestEnvironmentRefresh(selected); }
         FrequencyPeriodCombo.Visibility = selected?.Kind == LauncherTabKinds.Frequency ? Visibility.Visible : Visibility.Collapsed;
         FrequencyPeriodCombo.SelectedValue = _app.Data.Usage.FrequencyPeriod;
-        _settingSearch = true; SearchText.Text = selected is not null && _searchByTab.TryGetValue(selected.Id, out var search) ? search : ""; _settingSearch = false; ApplySearch(false); EmptyText.Visibility = visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed; _refreshing = false;
+        _settingSearch = true; SearchText.Text = selected is not null && _searchByTab.TryGetValue(selected.Id, out var search) ? search : ""; _settingSearch = false; ApplySearch(false); EmptyText.Visibility = visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed; _refreshing = false; ScheduleTabStripWidthUpdate();
     }
     public void PositionNearCursor()
     {
@@ -134,6 +135,20 @@ public partial class MainWindow : Window
     private static bool Contains(string value, string text) => NameRules.Normalize(value).Contains(text, StringComparison.OrdinalIgnoreCase);
 
     private void TabsList_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (!_refreshing && TabsList.SelectedItem is LauncherTab tab) _app.SelectTab(tab.Id); }
+    private void TabsList_SizeChanged(object sender, SizeChangedEventArgs e) => ScheduleTabStripWidthUpdate();
+
+    private void ScheduleTabStripWidthUpdate()
+    {
+        if (_tabStripWidthRefreshQueued) return;
+        _tabStripWidthRefreshQueued = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            _tabStripWidthRefreshQueued = false;
+            var scrollViewer = FindDescendant<ScrollViewer>(TabsList);
+            var width = TabStripLayoutRules.GetColumnWidth(scrollViewer?.ScrollableHeight > 0);
+            if (Math.Abs(TabsColumn.Width.Value - width) > double.Epsilon) TabsColumn.Width = new GridLength(width);
+        }, DispatcherPriority.Background);
+    }
     private void LauncherTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var source = e.OriginalSource as DependencyObject;
@@ -141,6 +156,17 @@ public partial class MainWindow : Window
         _pressedTreeExpander = FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(source) is not null;
         _pressedTreeModifier = LauncherClickRules.BlocksMouseAction(Keyboard.Modifiers);
         _treeDragNodeId = null;
+
+        if (_pressedTreeItem?.DataContext is SeparatorItem &&
+            !SeparatorInteractionRules.AllowsLauncherSelection(Keyboard.Modifiers))
+        {
+            _pressedTreeItem = null;
+            _pressedTreeExpander = false;
+            _pressedTreeModifier = false;
+            e.Handled = true;
+            return;
+        }
+
         if ((Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.None && !_pressedTreeExpander && _app.SelectedTab is { IsSystemTab: false } && _pressedTreeItem?.DataContext is LauncherNode node) { _treeDragStart = e.GetPosition(LauncherTree); _treeDragNodeId = node.Id; }
     }
     private async void LauncherTree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -278,6 +304,7 @@ public partial class MainWindow : Window
         if (tab.Kind is LauncherTabKinds.History or LauncherTabKinds.Frequency) return;
         if (tab.IsSystemTab) { menu.Items.Add(Menu("更新", RefreshSpecialTab)); return; }
         AddCreationItems(menu, null);
+        if (tab.IsWebTab) { menu.Items.Add(new Separator()); menu.Items.Add(Menu("📥 ブックマークをインポート", () => ImportBookmarks(tab, null))); }
     }
     private void AddNodeMenu(ContextMenu menu, LauncherNode node, LauncherTab tab)
     {
@@ -304,7 +331,7 @@ public partial class MainWindow : Window
     {
         var web = _app.SelectedTab?.IsWebTab == true;
         menu.Items.Add(Menu("すべて折りたたむ", CollapseAll)); menu.Items.Add(new Separator());
-        if (node is GroupNode) { AddCreationItems(menu, node.Id); if (web) menu.Items.Add(Menu("配下のサイトのアイコンを取得", () => _app.QueueMissingGroupIcons(SelectedTabId, node.Id))); menu.Items.Add(new Separator()); }
+        if (node is GroupNode) { AddCreationItems(menu, node.Id); if (web) { menu.Items.Add(Menu("📥 ブックマークをインポート", () => ImportBookmarks(_app.SelectedTab!, node.Id))); menu.Items.Add(Menu("配下のサイトのアイコンを取得", () => _app.QueueMissingGroupIcons(SelectedTabId, node.Id))); } menu.Items.Add(new Separator()); }
         if (node is SeparatorItem) { menu.Items.Add(Menu("削除", () => DeleteNode(node))); return; }
         if (node is not DirectoryItem) menu.Items.Add(Menu("名前をコピー", () => CopyText(DataValidator.NodeLabel(node))));
         if (node is FileItem or DirectoryItem) menu.Items.Add(Menu("パスをコピー", () => CopyText(((node is NamedLauncherItem named) ? named.Target : ((DirectoryItem)node).Target))));
@@ -518,7 +545,7 @@ public partial class MainWindow : Window
         else
         {
             menu.Items.Add(Menu("このランチャーを編集", () => _app.ShowEditor(tab.Id))); menu.Items.Add(Menu("このランチャーを複製", () => DuplicateTab(tab)));
-            if (tab.IsWebTab) { menu.Items.Add(new Separator()); menu.Items.Add(Menu("ブックマークをインポート", () => ImportBookmarks(tab))); menu.Items.Add(Menu("ブックマークHTMLをエクスポート", () => ExportBookmarks(tab))); }
+            if (tab.IsWebTab) { menu.Items.Add(new Separator()); menu.Items.Add(Menu("📤 ブックマークHTMLをエクスポート", () => ExportBookmarks(tab))); }
             menu.Items.Add(new Separator()); menu.Items.Add(Menu("名前を変更", () => RenameTab(tab))); menu.Items.Add(Menu("アイコンを変更", () => ChangeTabIcon(tab))); menu.Items.Add(Menu("アイコンを標準に戻す", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).Icon = null))); menu.Items.Add(Menu("非表示にする", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).IsVisible = false))); menu.Items.Add(Menu("削除", () => DeleteTab(tab))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("設定", _app.ShowSettings)); AddNewTabItems(menu);
         }
         TabsList.ContextMenu = menu; if (keyboard) OpenContextMenu(menu, target); else menu.IsOpen = true;
@@ -550,7 +577,7 @@ public partial class MainWindow : Window
     }
     private void AddNewTabItems(ContextMenu menu) { menu.Items.Add(Menu("アプリランチャーを新規登録", () => NewTab(LauncherTabKinds.Launcher))); menu.Items.Add(Menu("Webランチャーを新規登録", () => NewTab(LauncherTabKinds.Web))); }
     private void NewTab(string kind) { var title = kind == LauncherTabKinds.Web ? "Webランチャーの新規登録" : "アプリランチャーの新規登録"; var d = new TextPromptDialog(title, "名前") { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => { data.Tabs.Add(new LauncherTab { Name = d.Value, Kind = kind, Order = data.Tabs.Select(tab => tab.Order).DefaultIfEmpty(-1).Max() + 1 }); BuiltInTabs.Ensure(data); }); }
-    private void DeleteTab(LauncherTab tab) { if (ShowDialog(() => MessageBox.Show($"App Launcher\n「{tab.Name}」を削除しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning)) == MessageBoxResult.Yes) Commit(d => { d.Tabs.Remove(d.Tabs.First(x => x.Id == tab.Id)); NormalizeTabOrders(d.Tabs); }); }
+    private void DeleteTab(LauncherTab tab) { if (ShowDialog(() => MessageBox.Show(LauncherTabDeletionRules.ConfirmationMessage(tab), "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)) == MessageBoxResult.Yes) Commit(data => LauncherTabDeletionRules.TryDelete(data, tab.Id)); }
     private System.Windows.Controls.MenuItem Menu(string title, Action action) { var item = new System.Windows.Controls.MenuItem { Header = title }; item.Click += (_, _) => action(); return item; }
     private void RenameTab(LauncherTab tab) { var d = new TextPromptDialog("名前変更", "名前", tab.Name) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => data.Tabs.First(x => x.Id == tab.Id).Name = d.Value); }
     private void DuplicateTab(LauncherTab tab) { if (!_app.TryDuplicateTab(tab.Id, out _, out var error)) ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
@@ -559,18 +586,20 @@ public partial class MainWindow : Window
         var d = new OpenFileDialog { Title = "アイコンに使う画像", Filter = "画像|*.png;*.jpg;*.jpeg;*.bmp;*.ico" }; if (ShowDialog(d.ShowDialog) != true) return;
         try { var icon = _app.IconService.ImportImage(d.FileName, tab.Name); Commit(data => data.Tabs.First(x => x.Id == tab.Id).Icon = icon); } catch (Exception ex) { ShowDialog(() => MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
     }
-    private void ImportBookmarks(LauncherTab tab)
+    private void ImportBookmarks(LauncherTab tab, string? parentId)
     {
         var dialog = new OpenFileDialog { Title = "ブックマークHTMLをインポート", Filter = "ブックマークHTML|*.html;*.htm|すべてのファイル|*.*", CheckFileExists = true };
         if (ShowDialog(dialog.ShowDialog) != true) return;
         try
         {
             // Import は解析・URL検証の成功後にだけ一つの時刻Groupを追加する。
-            var result = _app.WebBookmarkService.Import(dialog.FileName, tab.Children);
+            var destination = parentId is null ? tab.Children : (FindNode(tab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidOperationException("取込先Groupが見つかりません。");
+            var result = _app.WebBookmarkService.Import(dialog.FileName, destination);
             if (result.Root is not null) Commit(data =>
             {
                 var target = data.Tabs.First(value => value.Id == tab.Id);
-                result.Root.Order = target.Children.Count; target.Children.Add(result.Root);
+                var collection = parentId is null ? target.Children : (FindNode(target.Children, parentId) as GroupNode)?.Children ?? throw new InvalidOperationException("取込先Groupが見つかりません。");
+                result.Root.Order = collection.Count; collection.Add(result.Root);
             });
             if (result.Root is not null) _app.QueueBookmarkIcons(tab.Id, result.IconCandidates);
             if (result.Skipped.Count == 0) { ShowDialog(() => MessageBox.Show($"{result.ImportedCount}件のブックマークを取り込みました。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Information)); return; }
@@ -590,7 +619,7 @@ public partial class MainWindow : Window
 
     private void MoveTreeSelection(int delta)
     {
-        var items = EnumerateVisibleContainers(LauncherTree).Where(x => x.DataContext is LauncherNode).ToList(); if (items.Count == 0) return;
+        var items = EnumerateVisibleContainers(LauncherTree).Where(x => x.DataContext is LauncherNode and not SeparatorItem).ToList(); if (items.Count == 0) return;
         var current = items.FindIndex(x => ReferenceEquals(x.DataContext, LauncherTree.SelectedItem)); var index = current < 0 ? (delta > 0 ? 0 : items.Count - 1) : Math.Clamp(current + delta, 0, items.Count - 1);
         var target = items[index]; target.IsSelected = true; target.Focus(); target.BringIntoView();
     }
@@ -645,5 +674,6 @@ public partial class MainWindow : Window
     private static void NormalizeOrders(ObservableCollection<LauncherNode> nodes) { for (var i = 0; i < nodes.Count; i++) { nodes[i].Order = i; if (nodes[i] is GroupNode group) NormalizeOrders(group.Children); } }
     private static void NormalizeTabOrders(ObservableCollection<LauncherTab> tabs) { var ordered = tabs.OrderBy(x => x.Order).ToList(); for (var i = 0; i < ordered.Count; i++) ordered[i].Order = i; }
     private static T? FindAncestor<T>(DependencyObject? value) where T : DependencyObject { while (value is not null && value is not T) value = VisualTreeHelper.GetParent(value); return value as T; }
+    private static T? FindDescendant<T>(DependencyObject? value) where T : DependencyObject { if (value is null) return null; for (var i = 0; i < VisualTreeHelper.GetChildrenCount(value); i++) { var child = VisualTreeHelper.GetChild(value, i); if (child is T result) return result; var found = FindDescendant<T>(child); if (found is not null) return found; } return null; }
     private static TreeViewItem? FindContainer(ItemsControl root, object value) { if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem direct) return direct; foreach (var item in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem child) { var found = FindContainer(child, value); if (found is not null) return found; } return null; }
 }

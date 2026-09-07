@@ -123,11 +123,17 @@ public partial class SettingsWindow : Window
     private void Up_Click(object sender, RoutedEventArgs e) => Move(-1);
     private void Down_Click(object sender, RoutedEventArgs e) => Move(1);
     private void Move(int delta) { if (TabsList.SelectedItem is not LauncherTab tab) return; var ordered = _app.Data.Tabs.OrderBy(x => x.Order).ToList(); var i = ordered.FindIndex(x => x.Id == tab.Id); var j = i + delta; if (j < 0 || j >= ordered.Count) return; var other = ordered[j]; Commit(data => { var a = data.Tabs.First(x => x.Id == tab.Id); var b = data.Tabs.First(x => x.Id == other.Id); (a.Order, b.Order) = (b.Order, a.Order); }, tab.Id, true); }
+    private void DeleteTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (TabsList.SelectedItem is not LauncherTab tab || !LauncherTabDeletionRules.CanDelete(tab)) return;
+        if (MessageBox.Show(LauncherTabDeletionRules.ConfirmationMessage(tab), "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        Commit(data => LauncherTabDeletionRules.TryDelete(data, tab.Id));
+    }
     private void TabsList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) { if (!_refreshing) UpdateMoveButtons(); }
     private void UpdateMoveButtons()
     {
         var ordered = _app.Data.Tabs.OrderBy(tab => tab.Order).ToList(); var selected = TabsList.SelectedItem as LauncherTab; var index = selected is null ? -1 : ordered.FindIndex(tab => tab.Id == selected.Id);
-        UpButton.IsEnabled = index > 0; DownButton.IsEnabled = index >= 0 && index < ordered.Count - 1;
+        UpButton.IsEnabled = index > 0; DownButton.IsEnabled = index >= 0 && index < ordered.Count - 1; DeleteTabButton.IsEnabled = selected is not null && LauncherTabDeletionRules.CanDelete(selected);
     }
     private void Save_Click(object sender, RoutedEventArgs e) { var d = new SaveFileDialog { Filter = "OpenGepa Profile|*.ogp", FileName = $"OpenGepaProfile_{DateTime.Now:yyyyMMdd_HHmmssff}.ogp" }; if (d.ShowDialog(this) == true) try { _app.ProfileService.Save(d.FileName); MessageBox.Show("Profileを保存しました。", "OpenGepa"); } catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); } }
     private void Load_Click(object sender, RoutedEventArgs e) { var d = new OpenFileDialog { Filter = "OpenGepa Profile|*.ogp" }; if (d.ShowDialog(this) != true || MessageBox.Show("現在の設定をProfileで置き換えますか？\n\nProfileには実行ファイル、スクリプト、ショートカットへの参照が含まれることがあります。信頼できるProfileだけを読み込んでください。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return; try { _app.ReplaceData(_app.ProfileService.Load(d.FileName)); RefreshData(); } catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); } }
