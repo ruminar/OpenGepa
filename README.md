@@ -80,7 +80,7 @@ Group、FileItem、UrlItemは、選択してF2を押すか右クリックの［�
 
 各ランチャー、Group、FileItem、DirectoryItem、UrlItemのアイコンを個別に変更できます。変更したアイコンは`icon/`にPNGとして保存されます。小さな画像は不必要に拡大せず、256pxを超える画像だけを縮小します。
 
-`iconSet/`には既定アイコンと初期アイコンセットを置けます。
+`iconSet/`には既定アイコンと初期アイコンセットを置けます。利用可能なアイコンセットと、ChatGPTを使った新しいセットの生成方法は、[`extras/icon-sets/`](extras/icon-sets/)を参照してください。
 
 - `OpenGepa.ico`: アプリ本体・トレイのアイコン
 - `group_default.png`: Groupの既定アイコン
