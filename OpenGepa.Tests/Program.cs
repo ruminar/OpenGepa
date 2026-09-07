@@ -17,6 +17,7 @@ var tests = new (string Name, Action Run)[]
     ("Backup recovery", TestBackupRecovery),
     ("Last-good recovery", TestLastGoodRecovery),
     ("Profile round trip and icon collision", TestProfileRoundTrip),
+    ("v0.2 profile format remains readable", TestV02ProfileCompatibility),
     ("Profile excludes system tabs and carries managed shortcuts", TestProfileSpecialTabExclusion),
     ("Managed shortcut creation leaves no duplicate orphan", TestManagedShortcutCreation),
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
@@ -43,6 +44,7 @@ var tests = new (string Name, Action Run)[]
     ("Specified bookmark icon URL resolves relative paths", TestSpecifiedBookmarkIconUrl),
     ("v0.1 data migrates to built-in tabs", TestV01Migration),
     ("v0.2 data appends visible usage tabs", TestV02UsageTabMigration),
+    ("Usage tabs rebuild after the local date changes", TestUsageTabDateRefresh),
     ("Built-in tab visibility and order are preserved", TestBuiltInTabPresentation),
     ("Web launcher accepts only URLs", TestWebLauncherRestriction),
     ("Store app grouping keeps same initial together", TestStoreAppGrouping),
@@ -56,6 +58,7 @@ var tests = new (string Name, Action Run)[]
     ("Bookmark separators round trip as HR", TestBookmarkSeparatorRoundTrip),
     ("Separator persists and is allowed in Web launchers", TestSeparatorPersistence),
     ("Usage history frequency and exclusion share one record", TestUsageRecording),
+    ("Usage icon snapshot survives source removal", TestUsageIconSnapshot),
     ("Usage periods retain totals and prune old days", TestUsagePeriods),
     ("Unreadable usage data starts empty", TestUnreadableUsageData),
     ("Default data seeds only an absent configuration", TestDefaultDataSeeding),
@@ -601,6 +604,35 @@ static void TestBookmarkImport()
     finally { Directory.Delete(root, true); }
 }
 
+static void TestV02ProfileCompatibility()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var app = AppService.Create(root); app.Initialize();
+        var tab = new LauncherTab
+        {
+            Name = "v0.2 Web",
+            Kind = LauncherTabKinds.Web,
+            Order = 0,
+            Children = new ObservableCollection<LauncherNode> { new UrlItem { Name = "Example", Target = "https://example.com", Order = 0 } }
+        };
+        var profile = Path.Combine(root, "v0.2-profile.ogp");
+        using (var archive = System.IO.Compression.ZipFile.Open(profile, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(archive, "manifest.json", System.Text.Json.JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 1, createdAt = "2026-09-05T00:00:00+09:00", createdBy = "OpenGepa", appVersion = "0.2.0" }, app.Store.JsonOptions));
+            WriteZipEntry(archive, "settings.json", System.Text.Json.JsonSerializer.Serialize(new { selectedTabId = tab.Id, appearance = new AppearanceSettings(), itemLaunch = new ItemLaunchSettings(), defaultIcons = new DefaultIconSettings(), tabs = new[] { new { tab.Id, tab.IsVisible, tab.Order } } }, app.Store.JsonOptions));
+            WriteZipEntry(archive, $"menus/{tab.Id}.json", System.Text.Json.JsonSerializer.Serialize(tab, app.Store.JsonOptions));
+        }
+        var loaded = app.ProfileService.Load(profile);
+        var restored = loaded.Tabs.Single(item => item.Id == tab.Id);
+        Equal("v0.2 Web", restored.Name); Equal("Example", ((UrlItem)restored.Children.Single()).Name);
+        True(loaded.Tabs.Any(item => item.Kind == LauncherTabKinds.History));
+        True(loaded.Tabs.Any(item => item.Kind == LauncherTabKinds.Frequency));
+    }
+    finally { Directory.Delete(root, true); }
+}
+
 static void TestLauncherTabDeletion()
 {
     var launcher = new LauncherTab { Name = "Launcher", Order = 0, Children = new ObservableCollection<LauncherNode> { new FileItem { Name = "Tool", Target = "C:\\Tool.exe" } } };
@@ -641,6 +673,20 @@ static void TestV02UsageTabMigration()
     });
 }
 
+static void TestUsageTabDateRefresh()
+{
+    var today = new DateOnly(2026, 9, 7);
+    var history = new LauncherTab { Kind = LauncherTabKinds.History, RuntimeChildren = [], RuntimeChildrenLocalDate = today.AddDays(-1) };
+    True(!RuntimeTabCacheRules.CanReuse(history, today));
+    history.RuntimeChildrenLocalDate = today;
+    True(RuntimeTabCacheRules.CanReuse(history, today));
+
+    var frequency = new LauncherTab { Kind = LauncherTabKinds.Frequency, RuntimeChildren = [], RuntimeChildrenLocalDate = today.AddDays(-1) };
+    True(!RuntimeTabCacheRules.CanReuse(frequency, today));
+    var windowsMenu = new LauncherTab { Kind = LauncherTabKinds.WindowsMenu, RuntimeChildren = [] };
+    True(RuntimeTabCacheRules.CanReuse(windowsMenu, today));
+}
+
 static void TestBookmarkSeparatorRoundTrip()
 {
     var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
@@ -653,7 +699,10 @@ static void TestBookmarkSeparatorRoundTrip()
         var tab = new LauncherTab { Name = "Web", Kind = LauncherTabKinds.Web, Children = imported.Children };
         new WebBookmarkService().Export(exported, tab); var html = File.ReadAllText(exported); True(html.Contains("<DT><HR>", StringComparison.Ordinal));
         File.WriteAllText(source, "<DL><p><DT><HR></DL><p>");
-        True(new WebBookmarkService().Import(source, []).Root!.Children.Single() is SeparatorItem);
+        var separatorOnly = new WebBookmarkService().Import(source, []);
+        True(separatorOnly.Root!.Children.Single() is SeparatorItem);
+        Equal(0, separatorOnly.ImportedCount); Equal(1, separatorOnly.ImportedSeparatorCount);
+        Equal("0件のブックマークと1件の区切り線を取り込みました。", separatorOnly.Summary);
     }
     finally { Directory.Delete(root, true); }
 }
@@ -677,14 +726,31 @@ static void TestUsageRecording()
     try
     {
         var paths = new AppPaths(root); paths.EnsureWritable(); var node = new FileItem { Name = "Tool", Target = "C:\\Tool.exe" };
-        using var usage = new UsageService(paths, identity => identity.Kind == UsageIdentity.Node && identity.Id == node.Id ? node : null);
+        using var usage = new UsageService(paths, identity => identity.Kind == UsageIdentity.Node && identity.Id == node.Id ? node : null, (_, _) => "icon/last-recorded.png");
         usage.RecordSuccessfulLaunch(node); usage.RecordSuccessfulLaunch(node); usage.Flush();
         Equal(2, usage.Data.History.Count); Equal(2L, usage.Data.Frequencies.Single().TotalCount);
+        Equal("icon/last-recorded.png", usage.Data.History[0].Icon);
         var historyItem = (UsageDisplayItem)((GroupNode)usage.BuildHistory().Single()).Children.Single(); Equal("2回", historyItem.CountDetail); True(historyItem.TimeDetail!.StartsWith("最終 ", StringComparison.Ordinal));
         Equal("2回", ((UsageDisplayItem)usage.BuildFrequency(UsagePeriods.Recent30Days).Single()).Detail);
         True(usage.TryExclude(node, out var error), error); Equal(0, usage.Data.History.Count); Equal(0, usage.Data.Frequencies.Count); Equal(1, usage.GetExclusions().Count);
         usage.RecordSuccessfulLaunch(node); Equal(0, usage.Data.History.Count);
         True(usage.TryRemoveExclusion(UsageIdentity.FromNode(node)!.Key, out error), error); usage.RecordSuccessfulLaunch(node); Equal(1, usage.Data.History.Count);
+    }
+    finally { Directory.Delete(root, true); }
+}
+
+static void TestUsageIconSnapshot()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var paths = new AppPaths(root); paths.EnsureWritable();
+        var source = Path.Combine(paths.IconDirectory, "source.png"); WritePng(source, System.Drawing.Color.Purple);
+        var captured = new IconService(paths).TryCaptureUsageIcon(new UrlItem { Name = "Site", Target = "https://example.com" }, "icon/source.png", "node:test");
+        True(captured is not null && captured.StartsWith("icon/usage_", StringComparison.Ordinal));
+        var capturedPath = Path.Combine(root, captured!.Replace('/', Path.DirectorySeparatorChar));
+        True(File.Exists(capturedPath)); File.Delete(source); True(File.Exists(capturedPath));
+        using var image = System.Drawing.Image.FromFile(capturedPath); Equal(System.Drawing.Imaging.ImageFormat.Png.Guid, image.RawFormat.Guid);
     }
     finally { Directory.Delete(root, true); }
 }
@@ -765,6 +831,11 @@ static void TestDeferredPersistence()
 static void WritePng(string path, System.Drawing.Color color)
 {
     using var image = new System.Drawing.Bitmap(2, 2); using var graphics = System.Drawing.Graphics.FromImage(image); graphics.Clear(color); image.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+}
+
+static void WriteZipEntry(System.IO.Compression.ZipArchive archive, string name, string content)
+{
+    using var writer = new StreamWriter(archive.CreateEntry(name).Open()); writer.Write(content);
 }
 
 static void PumpDispatcher()

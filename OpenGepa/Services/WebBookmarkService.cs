@@ -167,5 +167,8 @@ internal sealed record ParsedBookmarks(ObservableCollection<LauncherNode> Nodes,
 public sealed record BookmarkImportResult(GroupNode? Root, IReadOnlyList<SkippedBookmark> Skipped, IReadOnlyList<BookmarkIconCandidate> IconCandidates)
 {
     public int ImportedCount => Root is null ? 0 : CountUrls(Root.Children);
+    public int ImportedSeparatorCount => Root is null ? 0 : CountSeparators(Root.Children);
+    public string Summary => $"{ImportedCount:N0}件のブックマークと{ImportedSeparatorCount:N0}件の区切り線を取り込みました。";
     private static int CountUrls(IEnumerable<LauncherNode> nodes) => nodes.Sum(node => node switch { UrlItem => 1, GroupNode group => CountUrls(group.Children), _ => 0 });
+    private static int CountSeparators(IEnumerable<LauncherNode> nodes) => nodes.Sum(node => node switch { SeparatorItem => 1, GroupNode group => CountSeparators(group.Children), _ => 0 });
 }

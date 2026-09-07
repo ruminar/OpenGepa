@@ -197,7 +197,7 @@ public partial class EditorWindow : Window
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
         if (Tab is null) return; using var folder = new System.Windows.Forms.FolderBrowserDialog { Description = "走査するディレクトリ" }; if (folder.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-        var root = folder.SelectedPath; if (IsDangerousRoot(root) && MessageBox.Show("非常に多くのファイルが含まれる可能性があります。\n将来のWindows Menuで利用できる予定です。\n\n走査を続行しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        var root = folder.SelectedPath; if (IsDangerousRoot(root) && MessageBox.Show("非常に多くのファイルが含まれる可能性があり、走査に時間がかかることがあります。\n\n走査を続行しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         IsEnabled = false; var scanProgress = new OperationProgressDialog("ディレクトリ走査中", "候補を走査しています…", true) { Owner = this }; scanProgress.Show();
         try
         {

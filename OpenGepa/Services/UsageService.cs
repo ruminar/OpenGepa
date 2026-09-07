@@ -155,13 +155,14 @@ public sealed class UsageService : IDisposable
     private readonly UsageStore _store;
     private readonly UsageSaveQueue _queue;
     private readonly Func<LaunchTargetIdentity, LauncherNode?> _resolve;
+    private readonly Func<LauncherNode, LaunchTargetIdentity, string?> _captureIcon;
     private readonly object _gate = new();
     public UsageData Data { get; private set; }
     public event EventHandler? Changed;
 
-    public UsageService(AppPaths paths, Func<LaunchTargetIdentity, LauncherNode?> resolve)
+    public UsageService(AppPaths paths, Func<LaunchTargetIdentity, LauncherNode?> resolve, Func<LauncherNode, LaunchTargetIdentity, string?>? captureIcon = null)
     {
-        _store = new UsageStore(paths); _queue = new UsageSaveQueue(_store); _resolve = resolve; Data = _store.Load();
+        _store = new UsageStore(paths); _queue = new UsageSaveQueue(_store); _resolve = resolve; _captureIcon = captureIcon ?? ((node, _) => node.Icon); Data = _store.Load();
     }
 
     public void RecordSuccessfulLaunch(LauncherNode source)
@@ -171,8 +172,11 @@ public sealed class UsageService : IDisposable
         lock (_gate)
         {
             if (Data.Excluded.Any(item => item.Target.Key == identity.Key)) return;
+            string? recordedIcon;
+            try { recordedIcon = _captureIcon(node, identity); }
+            catch { recordedIcon = node.Icon; }
             var candidate = _store.Clone(Data); var now = DateTimeOffset.UtcNow; var today = DateOnly.FromDateTime(DateTime.Now);
-            candidate.History.Insert(0, new LaunchHistoryRecord { Target = identity, Name = DataValidator.NodeLabel(node), Icon = node.Icon, OccurredAtUtc = now });
+            candidate.History.Insert(0, new LaunchHistoryRecord { Target = identity, Name = DataValidator.NodeLabel(node), Icon = recordedIcon, OccurredAtUtc = now });
             if (candidate.History.Count > 1_000) candidate.History.RemoveRange(1_000, candidate.History.Count - 1_000);
             var aggregate = candidate.Frequencies.FirstOrDefault(item => item.Target.Key == identity.Key);
             if (aggregate is null) { aggregate = new UsageAggregate { Target = identity }; candidate.Frequencies.Add(aggregate); }

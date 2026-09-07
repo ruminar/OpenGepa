@@ -179,6 +179,8 @@ public sealed class LauncherTab : ObservableModel
     public ObservableCollection<LauncherNode> Children { get; set; } = [];
     /// <summary>特殊タブだけが使う、保存しない現在環境のノードです。</summary>
     [JsonIgnore] public ObservableCollection<LauncherNode>? RuntimeChildren { get; set; }
+    /// <summary>日付で表示内容が変わる特殊タブを生成したローカル日付です。</summary>
+    [JsonIgnore] public DateOnly? RuntimeChildrenLocalDate { get; set; }
     [JsonIgnore] public bool IsSystemTab => LauncherTabKinds.IsSystem(Kind);
     [JsonIgnore] public bool IsWebTab => Kind == LauncherTabKinds.Web;
     [JsonIgnore] public ObservableCollection<LauncherNode> DisplayChildren => RuntimeChildren ?? Children;

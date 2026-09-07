@@ -6,9 +6,12 @@ using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using OpenGepa.Models;
 
@@ -19,6 +22,15 @@ public enum LauncherToggleAction { Show, Activate, Hide }
 public static class LauncherToggleRules
 {
     public static LauncherToggleAction Decide(bool isVisible, bool wasActive) => !isVisible ? LauncherToggleAction.Show : wasActive ? LauncherToggleAction.Hide : LauncherToggleAction.Activate;
+}
+
+public static class RuntimeTabCacheRules
+{
+    public static bool CanReuse(LauncherTab tab, DateOnly localDate)
+    {
+        return tab.RuntimeChildren is not null &&
+            (tab.Kind is not (LauncherTabKinds.History or LauncherTabKinds.Frequency) || tab.RuntimeChildrenLocalDate == localDate);
+    }
 }
 
 public sealed class AppService
@@ -42,7 +54,7 @@ public sealed class AppService
         PresetService = new PresetService(StoreAppsService);
         ManagedShortcutService = new ManagedShortcutService(paths);
         WebBookmarkService = new WebBookmarkService();
-        UsageService = new UsageService(paths, ResolveUsageTarget);
+        UsageService = new UsageService(paths, ResolveUsageTarget, CaptureUsageIcon);
         UsageService.Changed += (_, _) =>
         {
             ClearUsageRuntimeTabs();
@@ -94,7 +106,9 @@ public sealed class AppService
     public ObservableCollection<LauncherNode> GetDisplayChildren(LauncherTab tab, bool refresh = false)
     {
         if (!tab.IsSystemTab) return tab.Children;
-        if (!refresh && tab.RuntimeChildren is not null) return tab.RuntimeChildren;
+        var dateSensitive = tab.Kind is LauncherTabKinds.History or LauncherTabKinds.Frequency;
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        if (!refresh && RuntimeTabCacheRules.CanReuse(tab, today)) return tab.RuntimeChildren!;
         tab.RuntimeChildren = tab.Kind switch
         {
             LauncherTabKinds.WindowsMenu => WindowsMenuService.Load(Data.WindowsMenu),
@@ -104,6 +118,7 @@ public sealed class AppService
             LauncherTabKinds.Frequency => UsageService.BuildFrequency(Data.Usage.FrequencyPeriod),
             _ => tab.RuntimeChildren
         };
+        tab.RuntimeChildrenLocalDate = dateSensitive ? today : null;
         return tab.DisplayChildren;
     }
 
@@ -184,7 +199,11 @@ public sealed class AppService
     private void ClearUsageRuntimeTabs()
     {
         if (Data is null) return;
-        foreach (var tab in Data.Tabs.Where(tab => tab.Kind is LauncherTabKinds.History or LauncherTabKinds.Frequency)) tab.RuntimeChildren = null;
+        foreach (var tab in Data.Tabs.Where(tab => tab.Kind is LauncherTabKinds.History or LauncherTabKinds.Frequency))
+        {
+            tab.RuntimeChildren = null;
+            tab.RuntimeChildrenLocalDate = null;
+        }
     }
 
     private LauncherNode? ResolveUsageTarget(LaunchTargetIdentity identity)
@@ -199,6 +218,17 @@ public sealed class AppService
         if (identity.Kind == UsageIdentity.Preset)
             return Walk(GetDisplayChildren(Data.Tabs.First(tab => tab.Kind == LauncherTabKinds.Presets))).OfType<PresetItem>().FirstOrDefault(item => item.PresetId.Equals(identity.Id, StringComparison.OrdinalIgnoreCase));
         return null;
+    }
+
+    private string? CaptureUsageIcon(LauncherNode node, LaunchTargetIdentity identity)
+    {
+        var configured = node.Icon ?? IconSetService.GetDefaultNodeIcon(node) ?? node switch
+        {
+            DirectoryItem => Data.DefaultIcons.DirectoryIcon,
+            UrlItem => Data.DefaultIcons.UrlIcon,
+            _ => null
+        };
+        return IconService.TryCaptureUsageIcon(node, configured, identity.Key);
     }
 
     public void QueueBookmarkIcons(string tabId, IEnumerable<BookmarkIconCandidate> candidates) => BookmarkIconQueue.Enqueue(tabId, candidates);
@@ -263,6 +293,7 @@ public sealed class AppService
         if (action == LauncherToggleAction.Show)
         {
             if (!Data.LauncherWindow.UsesSessionPosition || !_launcher.HasSessionPosition) _launcher.PositionNearCursor();
+            _launcher.RefreshData();
             _launcher.Show();
         }
         if (_launcher.WindowState == WindowState.Minimized) _launcher.WindowState = WindowState.Normal;
@@ -533,6 +564,54 @@ public sealed class IconService
         }
         catch { return null; }
         finally { if (icons[0] != IntPtr.Zero) DestroyIcon(icons[0]); }
+    }
+    public string? TryCaptureUsageIcon(LauncherNode node, string? configuredIcon, string usageKey)
+    {
+        try
+        {
+            var image = node switch
+            {
+                WindowsMenuShortcutItem shortcut => ShellIconService.TryLoad(shortcut.Target, 256),
+                StoreAppItem storeApp => ShellIconService.TryLoad(storeApp.IconSource, 256),
+                PresetItem preset => ShellIconService.TryLoad(preset.IconSource, 256),
+                _ => null
+            };
+            var bitmap = image as BitmapSource ?? TryLoadConfiguredImage(configuredIcon);
+            if (bitmap is null) return configuredIcon;
+
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(usageKey)))[..24].ToLowerInvariant();
+            var target = Path.Combine(_paths.IconDirectory, $"usage_{hash}.png");
+            var temporary = target + $".{Guid.NewGuid():N}.tmp";
+            try
+            {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    encoder.Save(stream);
+                    stream.Flush(true);
+                }
+                using (var verify = Image.FromFile(temporary))
+                    if (verify.RawFormat.Guid != System.Drawing.Imaging.ImageFormat.Png.Guid) throw new InvalidDataException("起動履歴用アイコンを検証できませんでした。");
+                File.Move(temporary, target, true);
+                return Path.GetRelativePath(_paths.BaseDirectory, target).Replace('\\', '/');
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+        catch { return configuredIcon; }
+    }
+    private BitmapSource? TryLoadConfiguredImage(string? relative)
+    {
+        if (string.IsNullOrWhiteSpace(relative)) return null;
+        try
+        {
+            var path = Path.GetFullPath(Path.Combine(_paths.BaseDirectory, relative));
+            var iconRoot = _paths.IconDirectory + Path.DirectorySeparatorChar;
+            var iconSetRoot = _paths.IconSetDirectory + Path.DirectorySeparatorChar;
+            if ((!path.StartsWith(iconRoot, StringComparison.OrdinalIgnoreCase) && !path.StartsWith(iconSetRoot, StringComparison.OrdinalIgnoreCase)) || !File.Exists(path)) return null;
+            return IconPathConverter.LoadImage(path, 256);
+        }
+        catch { return null; }
     }
     public void ImportTrayIcon(string source, string target)
     {

@@ -602,9 +602,9 @@ public partial class MainWindow : Window
                 result.Root.Order = collection.Count; collection.Add(result.Root);
             });
             if (result.Root is not null) _app.QueueBookmarkIcons(tab.Id, result.IconCandidates);
-            if (result.Skipped.Count == 0) { ShowDialog(() => MessageBox.Show($"{result.ImportedCount}件のブックマークを取り込みました。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Information)); return; }
+            if (result.Skipped.Count == 0) { ShowDialog(() => MessageBox.Show(result.Summary, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Information)); return; }
             var detail = string.Join(Environment.NewLine, result.Skipped.Select(item => $"{item.Name}: {item.Url}"));
-            var choice = ShowDialog(() => MessageBox.Show($"{result.ImportedCount}件のブックマークを取り込みました。\n{result.Skipped.Count}件はHTTP/HTTPS以外のURLのため取り込みませんでした。\n\nスキップしたURL一覧を表示しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Information));
+            var choice = ShowDialog(() => MessageBox.Show($"{result.Summary}\n{result.Skipped.Count}件はHTTP/HTTPS以外のURLのため取り込みませんでした。\n\nスキップしたURL一覧を表示しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Information));
             if (choice == MessageBoxResult.Yes) ShowDialog(() => new DiagnosticDialog("OpenGepa - 取り込みスキップ一覧", "HTTP/HTTPS以外のURLは取り込みませんでした。", detail) { Owner = this }.ShowDialog());
         }
         catch (Exception ex) { ShowDialog(() => MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
