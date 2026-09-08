@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json.Nodes;
 using OpenGepa;
 using OpenGepa.McpProtocol;
 using OpenGepa.Models;
@@ -73,6 +74,7 @@ var tests = new (string Name, Action Run)[]
     ("Default data seeds only an absent configuration", TestDefaultDataSeeding),
     ("Deferred persistence is serialized and does not overwrite newer data", TestDeferredPersistence),
     ("MCP refs, cursors, search, and atomic description updates", TestMcpCoordinator),
+    ("Gemini array schema avoids union types", TestGeminiSchemaCompatibility),
 };
 
 var failed = 0;
@@ -982,6 +984,15 @@ static void TestMcpCoordinator()
         var disabled = McpCall(coordinator, "session-a", "list_tabs", new { include_hidden = false }); True(disabled.Success); Equal("disabled", disabled.Data!.Value.GetProperty("status").GetString());
     }
     finally { Directory.Delete(path, true); }
+}
+
+static void TestGeminiSchemaCompatibility()
+{
+    var schema = JsonNode.Parse("{\"type\":[\"array\",\"null\"],\"items\":{\"type\":[\"string\",\"null\"]},\"default\":null}")!;
+    var normalized = GeminiSchemaCompatibility.NormalizeNullableArray(schema).AsObject();
+    Equal("array", normalized["type"]!.GetValue<string>());
+    Equal("string", normalized["items"]!["type"]!.GetValue<string>());
+    True(normalized["default"] is JsonArray { Count: 0 });
 }
 
 static IpcResponse McpCall(McpCoordinator coordinator, string session, string operation, object payload)

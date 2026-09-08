@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using Microsoft.Extensions.AI;
 
 await using var backend = new McpBackendClient();
 var tools = new OpenGepaTools(backend);
@@ -9,7 +10,12 @@ var options = new McpServerOptions
     [
         McpServerTool.Create(tools.list_tabs, new() { Name = "list_tabs", Description = "OpenGepaの現在の縦タブ一覧を返します。" }),
         McpServerTool.Create(tools.browse_items, new() { Name = "browse_items", Description = "OpenGepaのタブまたはGroup直下の項目を一覧します。" }),
-        McpServerTool.Create(tools.search_items, new() { Name = "search_items", Description = "OpenGepaの表示名と説明を検索します。ベクトル検索や外部AI APIは使用しません。" }),
+        McpServerTool.Create(tools.search_items, new()
+        {
+            Name = "search_items",
+            Description = "OpenGepaの表示名と説明を検索します。ベクトル検索や外部AI APIは使用しません。",
+            SchemaCreateOptions = new AIJsonSchemaCreateOptions { TransformSchemaNode = (_, node) => GeminiSchemaCompatibility.NormalizeNullableArray(node) }
+        }),
         McpServerTool.Create(tools.get_item, new() { Name = "get_item", Description = "OpenGepa項目の現在の詳細を返します。include_target=trueの場合だけファイルパスやURLを返します。" }),
         McpServerTool.Create(tools.launch_item, new() { Name = "launch_item", Description = "OpenGepaへ登録済みでMCP実行が許可された項目を起動します。任意パス、任意URL、任意コマンドは受け付けません。" }),
         McpServerTool.Create(tools.get_recent_items, new() { Name = "get_recent_items", Description = "OpenGepaに記録された最近の成功起動を新しい順に返します。" }),

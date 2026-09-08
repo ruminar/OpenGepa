@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OpenGepa\OpenGepa.csproj" />
+    <Compile Include="..\OpenGepa.Mcp\GeminiSchemaCompatibility.cs" Link="GeminiSchemaCompatibility.cs" />
   </ItemGroup>
 </Project>
