@@ -322,6 +322,7 @@ public partial class MainWindow : Window
         }
         if (tab.Kind is LauncherTabKinds.History or LauncherTabKinds.Frequency) return;
         if (tab.IsSystemTab) { menu.Items.Add(Menu("更新", RefreshSpecialTab)); return; }
+        menu.Items.Add(Menu("このランチャーの説明を表示・編集", () => EditDescription(tab, null))); menu.Items.Add(new Separator());
         AddCreationItems(menu, null);
         if (tab.IsWebTab) { menu.Items.Add(new Separator()); menu.Items.Add(Menu("📥 ブックマークをインポート", () => ImportBookmarks(tab, null))); }
     }
@@ -374,6 +375,7 @@ public partial class MainWindow : Window
         }
         else if (node is DirectoryItem directory) menu.Items.Add(Menu("参照先を変更", () => ChangeDirectoryTarget(directory)));
         else if (node is UrlItem url) { menu.Items.Add(Menu("URLを変更", () => ChangeTarget(url))); menu.Items.Add(Menu("ページタイトルを名前に設定", () => _ = FetchPageTitle(url, SelectedTabId))); }
+        menu.Items.Add(Menu("説明を表示・編集", () => EditDescription(_app.SelectedTab!, node)));
         menu.Items.Add(new Separator()); menu.Items.Add(Menu("アイコンを変更", () => ChangeNodeIcon(node))); if (!web && node is FileItem retry) menu.Items.Add(Menu("アイコンを再取得", () => RetryNodeIcon(retry))); if (node is UrlItem site) { menu.Items.Add(Menu("サイトのアイコンを取得", () => _ = FetchUrlIcon(site, SelectedTabId))); menu.Items.Add(Menu("アイコンURLを指定して取得", () => FetchSpecifiedUrlIcon(site, SelectedTabId))); } menu.Items.Add(Menu("アイコンを標準に戻す", () => SetNodeIcon(node.Id, null))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("削除", () => DeleteNode(node)));
     }
     private void AddCreationItems(ContextMenu menu, string? parentId)
@@ -592,7 +594,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            menu.Items.Add(Menu("このランチャーを編集", () => _app.ShowEditor(tab.Id))); menu.Items.Add(Menu("このランチャーを複製", () => DuplicateTab(tab)));
+            menu.Items.Add(Menu("このランチャーを編集", () => _app.ShowEditor(tab.Id))); menu.Items.Add(Menu("このランチャーを複製", () => DuplicateTab(tab))); menu.Items.Add(Menu("このランチャーの説明を表示・編集", () => EditDescription(tab, null)));
             if (tab.IsWebTab) { menu.Items.Add(new Separator()); menu.Items.Add(Menu("📤 ブックマークHTMLをエクスポート", () => ExportBookmarks(tab))); }
             menu.Items.Add(new Separator()); menu.Items.Add(Menu("名前を変更", () => RenameTab(tab))); menu.Items.Add(Menu("アイコンを変更", () => ChangeTabIcon(tab))); menu.Items.Add(Menu("アイコンを標準に戻す", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).Icon = null))); menu.Items.Add(Menu("非表示にする", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).IsVisible = false))); menu.Items.Add(Menu("削除", () => DeleteTab(tab))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("設定", _app.ShowSettings)); AddNewTabItems(menu);
         }
@@ -626,6 +628,17 @@ public partial class MainWindow : Window
     private void AddNewTabItems(ContextMenu menu) { menu.Items.Add(Menu("アプリランチャーを新規登録", () => NewTab(LauncherTabKinds.Launcher))); menu.Items.Add(Menu("Webランチャーを新規登録", () => NewTab(LauncherTabKinds.Web))); }
     private void NewTab(string kind) { var title = kind == LauncherTabKinds.Web ? "Webランチャーの新規登録" : "アプリランチャーの新規登録"; var d = new TextPromptDialog(title, "名前") { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => { data.Tabs.Add(new LauncherTab { Name = d.Value, Kind = kind, Order = data.Tabs.Select(tab => tab.Order).DefaultIfEmpty(-1).Max() + 1 }); BuiltInTabs.Ensure(data); }); }
     private void DeleteTab(LauncherTab tab) { if (ShowDialog(() => MessageBox.Show(LauncherTabDeletionRules.ConfirmationMessage(tab), "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)) == MessageBoxResult.Yes) Commit(data => LauncherTabDeletionRules.TryDelete(data, tab.Id)); }
+    private void EditDescription(LauncherTab tab, LauncherNode? node)
+    {
+        var tabId = tab.Id; var nodeId = node?.Id; var name = node is null ? tab.Name : DataValidator.NodeLabel(node); var dialog = new DescriptionDialog(name, node?.Description ?? tab.Description) { Owner = this };
+        if (ShowDialog(dialog.ShowDialog) != true) return;
+        Commit(data =>
+        {
+            var mutableTab = data.Tabs.First(item => item.Id == tabId);
+            if (nodeId is null) mutableTab.Description = dialog.Value;
+            else (FindNode(mutableTab.Children, nodeId) ?? throw new InvalidDataException("対象が見つかりません。")).Description = dialog.Value;
+        });
+    }
     private System.Windows.Controls.MenuItem Menu(string title, Action action) { var item = new System.Windows.Controls.MenuItem { Header = title }; item.Click += (_, _) => action(); return item; }
     private void RenameTab(LauncherTab tab) { var d = new TextPromptDialog("名前変更", "名前", tab.Name) { Owner = this }; if (ShowDialog(d.ShowDialog) == true) Commit(data => data.Tabs.First(x => x.Id == tab.Id).Name = d.Value); }
     private void DuplicateTab(LauncherTab tab) { if (!_app.TryDuplicateTab(tab.Id, out _, out var error)) ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); }
