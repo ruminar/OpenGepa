@@ -201,6 +201,11 @@ public sealed class UsageService : IDisposable
 
     public bool TryRemoveExclusion(string key, out string error) => TryChange(candidate => candidate.Excluded.RemoveAll(item => item.Target.Key == key), out error);
     public bool TryClearHistory(out string error) => TryChange(candidate => candidate.History.Clear(), out error);
+    public bool TryRemoveHistoryTarget(string usageKey, out string error)
+    {
+        if (string.IsNullOrWhiteSpace(usageKey)) { error = "起動履歴の識別子が不正です。"; return false; }
+        return TryChange(candidate => candidate.History.RemoveAll(item => item.Target.Key == usageKey), out error);
+    }
     public bool TryClearFrequency(out string error) => TryChange(candidate => candidate.Frequencies.Clear(), out error);
     public bool TryClearAll(out string error) => TryChange(candidate => { candidate.History.Clear(); candidate.Frequencies.Clear(); }, out error);
 

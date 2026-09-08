@@ -330,9 +330,16 @@ public partial class MainWindow : Window
         if (tab.Kind is LauncherTabKinds.History or LauncherTabKinds.Frequency)
         {
             menu.Items.Add(Menu("すべて折りたたむ", CollapseAll));
-            if (node is UsageDisplayItem usage && usage.IsAvailable && usage.CurrentItem is not null)
+            if (node is UsageDisplayItem usage)
             {
-                menu.Items.Add(new Separator()); menu.Items.Add(Menu("起動", () => _ = Launch(usage))); menu.Items.Add(Menu("起動記録に残さない", () => ExcludeFromUsage(usage.CurrentItem)));
+                if (usage.IsAvailable && usage.CurrentItem is not null)
+                {
+                    menu.Items.Add(new Separator()); menu.Items.Add(Menu("起動", () => _ = Launch(usage))); menu.Items.Add(Menu("起動記録に残さない", () => ExcludeFromUsage(usage.CurrentItem)));
+                }
+                if (tab.Kind == LauncherTabKinds.History)
+                {
+                    menu.Items.Add(new Separator()); menu.Items.Add(Menu("この項目の履歴を削除", () => DeleteHistoryTarget(usage)));
+                }
             }
             return;
         }
@@ -446,6 +453,11 @@ public partial class MainWindow : Window
     private void ExcludeFromUsage(LauncherNode node)
     {
         if (!_app.UsageService.TryExclude(node, out var error)) ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error));
+    }
+    private void DeleteHistoryTarget(UsageDisplayItem usage)
+    {
+        if (ShowDialog(() => MessageBox.Show($"「{usage.Name}」の起動履歴をすべて削除しますか？\n使用頻度は変更しません。この操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)) != MessageBoxResult.Yes) return;
+        if (!_app.UsageService.TryRemoveHistoryTarget(usage.UsageKey, out var error)) ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error));
     }
     private void AddFile(string? parentId)
     {
@@ -655,7 +667,7 @@ public partial class MainWindow : Window
     }
     private static bool IsDescendantOf(DependencyObject? value, DependencyObject ancestor)
     {
-        while (value is not null) { if (ReferenceEquals(value, ancestor)) return true; value = VisualTreeHelper.GetParent(value); }
+        while (value is not null) { if (ReferenceEquals(value, ancestor)) return true; value = TreeVisualRules.ParentOf(value); }
         return false;
     }
 
@@ -692,7 +704,7 @@ public partial class MainWindow : Window
     private static bool RemoveNode(ObservableCollection<LauncherNode> nodes, string id) { var item = nodes.FirstOrDefault(x => x.Id == id); if (item is not null) return nodes.Remove(item); return nodes.OfType<GroupNode>().Any(group => RemoveNode(group.Children, id)); }
     private static void NormalizeOrders(ObservableCollection<LauncherNode> nodes) { for (var i = 0; i < nodes.Count; i++) { nodes[i].Order = i; if (nodes[i] is GroupNode group) NormalizeOrders(group.Children); } }
     private static void NormalizeTabOrders(ObservableCollection<LauncherTab> tabs) { var ordered = tabs.OrderBy(x => x.Order).ToList(); for (var i = 0; i < ordered.Count; i++) ordered[i].Order = i; }
-    private static T? FindAncestor<T>(DependencyObject? value) where T : DependencyObject { while (value is not null && value is not T) value = VisualTreeHelper.GetParent(value); return value as T; }
+    private static T? FindAncestor<T>(DependencyObject? value) where T : DependencyObject => TreeVisualRules.FindAncestor<T>(value);
     private static T? FindDescendant<T>(DependencyObject? value) where T : DependencyObject { if (value is null) return null; for (var i = 0; i < VisualTreeHelper.GetChildrenCount(value); i++) { var child = VisualTreeHelper.GetChild(value, i); if (child is T result) return result; var found = FindDescendant<T>(child); if (found is not null) return found; } return null; }
     private static TreeViewItem? FindContainer(ItemsControl root, object value) { if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem direct) return direct; foreach (var item in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem child) { var found = FindContainer(child, value); if (found is not null) return found; } return null; }
 }

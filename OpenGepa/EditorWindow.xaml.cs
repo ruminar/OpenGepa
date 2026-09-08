@@ -466,8 +466,7 @@ public partial class EditorWindow : Window
     { if (nodes.Any(x => x.Id == id)) return nodes; foreach (var group in nodes.OfType<GroupNode>()) { var found = FindContainingCollection(group.Children, id); if (found is not null) return found; } return null; }
     private static void NormalizeOrders(ObservableCollection<LauncherNode> nodes)
     { for (var i = 0; i < nodes.Count; i++) { nodes[i].Order = i; if (nodes[i] is GroupNode group) NormalizeOrders(group.Children); } }
-    private static T? FindAncestor<T>(DependencyObject? value) where T : DependencyObject
-    { while (value is not null && value is not T) value = VisualTreeHelper.GetParent(value); return value as T; }
+    private static T? FindAncestor<T>(DependencyObject? value) where T : DependencyObject => TreeVisualRules.FindAncestor<T>(value);
     private static TreeViewItem? FindContainer(ItemsControl root, object value) { if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem direct) return direct; foreach (var item in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem child) { var found = FindContainer(child, value); if (found is not null) return found; } return null; }
     private static IEnumerable<LauncherNode> Walk(IEnumerable<LauncherNode> nodes) { foreach (var n in nodes) { yield return n; if (n is GroupNode g) foreach (var c in Walk(g.Children)) yield return c; } }
     private IReadOnlyList<LauncherNode> GetSelectedNodes()

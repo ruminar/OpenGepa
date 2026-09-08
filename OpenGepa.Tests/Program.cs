@@ -36,6 +36,7 @@ var tests = new (string Name, Action Run)[]
     ("Directory scan root group", TestDirectoryScanRootGroup),
     ("Destination choices", TestDestinationChoices),
     ("Editor expansion persistence", TestEditorExpansionPersistence),
+    ("Tree visual parent supports text runs", TestTreeVisualParent),
     ("Tree range selection", TestTreeRangeSelection),
     ("Browser URL drop text", TestBrowserUrlDropText),
     ("Browser URL data transfer", TestBrowserUrlDataTransfer),
@@ -353,6 +354,21 @@ static void TestEditorExpansionPersistence()
         }
         catch (Exception ex) { failure = ex; }
         finally { try { Directory.Delete(path, true); } catch { } }
+    });
+    thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join(); if (failure is not null) throw failure;
+}
+
+static void TestTreeVisualParent()
+{
+    Exception? failure = null;
+    var thread = new Thread(() =>
+    {
+        try
+        {
+            var text = new System.Windows.Controls.TextBlock(); var run = new System.Windows.Documents.Run("利用不可"); text.Inlines.Add(run);
+            True(ReferenceEquals(text, TreeVisualRules.FindAncestor<System.Windows.Controls.TextBlock>(run)));
+        }
+        catch (Exception ex) { failure = ex; }
     });
     thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join(); if (failure is not null) throw failure;
 }
@@ -764,7 +780,9 @@ static void TestUsageRecording()
         Equal("icon/last-recorded.png", usage.Data.History[0].Icon);
         var historyItem = (UsageDisplayItem)((GroupNode)usage.BuildHistory().Single()).Children.Single(); Equal("2回", historyItem.CountDetail); True(historyItem.TimeDetail!.StartsWith("最終 ", StringComparison.Ordinal));
         Equal("2回", ((UsageDisplayItem)usage.BuildFrequency(UsagePeriods.Recent30Days).Single()).Detail);
-        True(usage.TryExclude(node, out var error), error); Equal(0, usage.Data.History.Count); Equal(0, usage.Data.Frequencies.Count); Equal(1, usage.GetExclusions().Count);
+        True(usage.TryRemoveHistoryTarget(historyItem.UsageKey, out var error), error); Equal(0, usage.Data.History.Count); Equal(2L, usage.Data.Frequencies.Single().TotalCount);
+        usage.RecordSuccessfulLaunch(node); Equal(1, usage.Data.History.Count); Equal(3L, usage.Data.Frequencies.Single().TotalCount);
+        True(usage.TryExclude(node, out error), error); Equal(0, usage.Data.History.Count); Equal(0, usage.Data.Frequencies.Count); Equal(1, usage.GetExclusions().Count);
         usage.RecordSuccessfulLaunch(node); Equal(0, usage.Data.History.Count);
         True(usage.TryRemoveExclusion(UsageIdentity.FromNode(node)!.Key, out error), error); usage.RecordSuccessfulLaunch(node); Equal(1, usage.Data.History.Count);
     }
