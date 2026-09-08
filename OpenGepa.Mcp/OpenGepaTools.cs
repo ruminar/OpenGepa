@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using ModelContextProtocol.Server;
 
 public sealed class OpenGepaTools(McpBackendClient backend)
 {

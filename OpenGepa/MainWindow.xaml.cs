@@ -49,7 +49,7 @@ public partial class MainWindow : Window
 
     public void RefreshData(bool refreshEnvironment = false)
     {
-        Icon = WindowIconService.Load(_app); CaptureExpanded(_renderedTabId); _refreshing = true; var visible = _app.VisibleTabs; var selected = _app.SelectedTab; TabsList.ItemsSource = visible; TabsList.SelectedItem = selected; PinToggle.IsChecked = _app.Data.IsLauncherPinned; Topmost = !_app.Data.IsLauncherPinned; Title = selected is null ? "OpenGepa" : $"OpenGepa - {selected.Name}";
+        Icon = WindowIconService.Load(_app); CaptureExpanded(_renderedTabId); _refreshing = true; var visible = _app.VisibleTabs; var selected = _app.SelectedTab; TabsList.ItemsSource = visible; TabsList.SelectedItem = selected; PinToggle.IsChecked = _app.Data.IsLauncherPinned; Topmost = !_app.Data.IsLauncherPinned; var title = selected is null ? "OpenGepa" : $"OpenGepa - {selected.Name}"; Title = _app.Data.Mcp.Enabled ? $"🟢 {title}" : title;
         _renderedTabId = selected?.Id; if (selected is not null) { _app.GetDisplayChildren(selected, refreshEnvironment); _app.RequestEnvironmentRefresh(selected); }
         FrequencyPeriodCombo.Visibility = selected?.Kind == LauncherTabKinds.Frequency ? Visibility.Visible : Visibility.Collapsed;
         FrequencyPeriodCombo.SelectedValue = _app.Data.Usage.FrequencyPeriod;

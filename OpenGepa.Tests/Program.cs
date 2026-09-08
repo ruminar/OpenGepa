@@ -372,7 +372,8 @@ static void TestEditorExpansionPersistence()
             var tab = new LauncherTab { Name = "Editor", Children = new ObservableCollection<LauncherNode> { group } }; app.ReplaceData(Data(tab));
             var settings = new SettingsWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; settings.Show(); settings.RefreshData(); settings.UpdateLayout(); True(settings.FindName("PresetItemsList") is System.Windows.Controls.ListBox); True(settings.FindName("PositionModeCombo") is System.Windows.Controls.ComboBox { SelectedValue: "cursor" }); settings.Hide();
             True(app.TryCommit(_ => { }, out var setupError), setupError);
-            var launcher = new MainWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; launcher.Show(); launcher.RefreshData(true); launcher.UpdateLayout();
+            var launcher = new MainWindow(app) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; launcher.Show(); launcher.RefreshData(true); launcher.UpdateLayout(); Equal("OpenGepa - Editor", launcher.Title);
+            True(app.TryCommit(data => data.Mcp.Enabled = true, out var mcpError), mcpError); PumpDispatcher(); launcher.RefreshData(); Equal("🟢 OpenGepa - Editor", launcher.Title);
             var pin = (System.Windows.Controls.Primitives.ToggleButton)launcher.FindName("PinToggle"); pin.IsChecked = true; PumpDispatcher(); True(app.Data.IsLauncherPinned);
             app.SelectTab(BuiltInTabs.PresetsId); PumpDispatcher(); launcher.RefreshData(true); True(app.SelectedTab?.Kind == LauncherTabKinds.Presets); launcher.Hide();
             var window = new EditorWindow(app, tab.Id) { ShowInTaskbar = false, Left = -10000, Top = -10000, Opacity = 0 }; window.Show(); window.RefreshData(); window.UpdateLayout();
