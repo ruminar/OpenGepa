@@ -602,6 +602,8 @@ MCPクライアントからの不正要求で `opengepa.json`、Profile、起動
 
 `OpenGepa.Mcp.exe` の異常終了、MCPクライアントの切断、STDIOのEOFによってOpenGepa本体を終了させない。
 
+利用者がOpenGepa本体を明示的に終了した場合だけ、同じ配置ディレクトリの `OpenGepa.Mcp.exe` へ終了通知を送る。通知を受けたMCP実行ファイルはSTDIOを閉じて終了する。IPC切断、MCPクライアントの切断、OpenGepa本体の異常終了ではこの通知を送らない。
+
 
 ## 12. 配布
 
@@ -717,6 +719,7 @@ READMEへ［MCP連携］を追加する。
 - 本体起動失敗時に明示的なエラーを返す
 - IPC切断でOpenGepa本体を終了しない
 - MCPクライアント終了でOpenGepa本体を終了しない
+- 利用者がOpenGepa本体を終了した場合、同じ配置のMCP実行ファイルも終了する
 - MCPの標準出力へ診断ログを混入させない
 - 同じ配置ディレクトリのOpenGepaは一つだけ起動し、既存インスタンスを表示できる
 - 同じWindowsユーザーの別ディレクトリにあるOpenGepaは同時に起動でき、Mutex、表示通知、IPCが衝突しない

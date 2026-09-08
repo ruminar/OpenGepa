@@ -1,5 +1,6 @@
 using ModelContextProtocol.Server;
 using Microsoft.Extensions.AI;
+using OpenGepa;
 
 await using var backend = new McpBackendClient();
 var tools = new OpenGepaTools(backend);
@@ -26,12 +27,29 @@ var options = new McpServerOptions
 
 await using var transport = new StdioServerTransport(options);
 await using var server = McpServer.Create(transport, options);
+using var shutdownEvent = new EventWaitHandle(false, EventResetMode.ManualReset, InstanceIdentity.McpShutdownEventName);
+using var shutdownCancellation = new CancellationTokenSource();
+using var stopWatcher = new CancellationTokenSource();
+var shutdownWatcher = Task.Run(() =>
+{
+    if (WaitHandle.WaitAny([shutdownEvent, stopWatcher.Token.WaitHandle]) == 0)
+        shutdownCancellation.Cancel();
+});
+
 try
 {
-    await server.RunAsync();
+    await server.RunAsync(shutdownCancellation.Token);
+}
+catch (OperationCanceledException) when (shutdownCancellation.IsCancellationRequested)
+{
 }
 catch (Exception ex) when (ex is not OperationCanceledException)
 {
     await Console.Error.WriteLineAsync($"OpenGepa.Mcp: {ex}");
     Environment.ExitCode = 1;
+}
+finally
+{
+    stopWatcher.Cancel();
+    await shutdownWatcher;
 }

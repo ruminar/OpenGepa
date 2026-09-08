@@ -8,6 +8,7 @@ public static class InstanceIdentity
     public static string CurrentId => FromDirectory(AppContext.BaseDirectory);
     public static string MutexName => $@"Local\OpenGepa.Singleton.{CurrentId}";
     public static string ShowEventName => $@"Local\OpenGepa.Show.{CurrentId}";
+    public static string McpShutdownEventName => $@"Local\OpenGepa.McpShutdown.{CurrentId}";
     public static string PipeName => $"OpenGepa.Mcp.{CurrentId}";
 
     public static string FromDirectory(string directory)

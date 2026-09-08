@@ -11,6 +11,7 @@ public partial class App : System.Windows.Application
     public static bool IsExiting { get; private set; }
     private Mutex? _mutex;
     private EventWaitHandle? _showEvent;
+    private EventWaitHandle? _mcpShutdownEvent;
     private RegisteredWaitHandle? _showRegistration;
     private TrayService? _tray;
     private HwndSource? _hotKeyWindow;
@@ -38,6 +39,8 @@ public partial class App : System.Windows.Application
 
         try
         {
+            _mcpShutdownEvent = new EventWaitHandle(false, EventResetMode.ManualReset, InstanceIdentity.McpShutdownEventName);
+            _mcpShutdownEvent.Reset();
             Services = AppService.Create();
             Services.Initialize();
             EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
@@ -63,6 +66,7 @@ public partial class App : System.Windows.Application
     public void ExitApplication()
     {
         IsExiting = true;
+        _mcpShutdownEvent?.Set();
         foreach (var window in Windows.Cast<Window>().ToArray()) window.Close();
         _tray?.Dispose();
         var mcpPipeServer = _mcpPipeServer; _mcpPipeServer = null; mcpPipeServer?.Dispose();
@@ -76,6 +80,7 @@ public partial class App : System.Windows.Application
         _showRegistration?.Unregister(null);
         _mcpPipeServer?.Dispose();
         _mcpPipeServer = null;
+        _mcpShutdownEvent?.Dispose();
         _showEvent?.Dispose();
         if (_mutex is not null) { try { _mutex.ReleaseMutex(); } catch (ApplicationException) { } _mutex.Dispose(); }
         base.OnExit(e);

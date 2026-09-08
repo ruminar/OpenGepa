@@ -123,6 +123,7 @@ static void TestInstanceIdentity()
 {
     Equal(InstanceIdentity.FromDirectory("C:\\Apps\\OpenGepa"), InstanceIdentity.FromDirectory("c:\\apps\\opengepa\\"));
     True(InstanceIdentity.FromDirectory("C:\\Apps\\OpenGepa") != InstanceIdentity.FromDirectory("C:\\Apps\\OpenGepa-Copy"));
+    True(InstanceIdentity.McpShutdownEventName.EndsWith(InstanceIdentity.CurrentId, StringComparison.Ordinal));
 }
 
 static void TestEmptyLauncherState()
