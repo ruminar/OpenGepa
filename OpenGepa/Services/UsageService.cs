@@ -165,13 +165,14 @@ public sealed class UsageService : IDisposable
         _store = new UsageStore(paths); _queue = new UsageSaveQueue(_store); _resolve = resolve; _captureIcon = captureIcon ?? ((node, _) => node.Icon); Data = _store.Load();
     }
 
-    public void RecordSuccessfulLaunch(LauncherNode source)
+    public string? RecordSuccessfulLaunch(LauncherNode source, bool waitForSave = false)
     {
         var node = source is UsageDisplayItem display ? display.CurrentItem : source;
-        if (node is null || UsageIdentity.FromNode(node) is not { } identity) return;
+        if (node is null || UsageIdentity.FromNode(node) is not { } identity) return null;
+        string? saveError = null;
         lock (_gate)
         {
-            if (Data.Excluded.Any(item => item.Target.Key == identity.Key)) return;
+            if (Data.Excluded.Any(item => item.Target.Key == identity.Key)) return null;
             string? recordedIcon;
             try { recordedIcon = _captureIcon(node, identity); }
             catch { recordedIcon = node.Icon; }
@@ -183,9 +184,16 @@ public sealed class UsageService : IDisposable
             aggregate.TotalCount++; aggregate.LastLaunchedAtUtc = now;
             var daily = aggregate.DailyCounts.FirstOrDefault(item => item.Date == today);
             if (daily is null) aggregate.DailyCounts.Add(new DailyUsageCount { Date = today, Count = 1 }); else daily.Count++;
-            PruneOldDailyCounts(candidate, today); Data = candidate; _queue.RequestSave(_store.Clone(candidate));
+            PruneOldDailyCounts(candidate, today);
+            if (waitForSave)
+            {
+                try { _queue.SaveNowAsync(_store.Clone(candidate)).GetAwaiter().GetResult(); Data = candidate; }
+                catch (Exception ex) { saveError = ex.Message; }
+            }
+            else { Data = candidate; _queue.RequestSave(_store.Clone(candidate)); }
         }
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (saveError is null) Changed?.Invoke(this, EventArgs.Empty);
+        return saveError;
     }
 
     public bool TryExclude(LauncherNode source, out string error)
@@ -257,6 +265,8 @@ public sealed class UsageService : IDisposable
     {
         lock (_gate) return Data.Excluded.Select(item => { var current = _resolve(item.Target); return new UsageExclusionView(item.Target.Key, current is null ? item.Name : DataValidator.NodeLabel(current), current, current is not null); }).OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    public UsageData Snapshot() { lock (_gate) return _store.Clone(Data); }
 
     private static bool PruneOldDailyCounts(UsageData data, DateOnly today)
     {

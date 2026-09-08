@@ -9,13 +9,12 @@ namespace OpenGepa;
 public partial class App : System.Windows.Application
 {
     public static bool IsExiting { get; private set; }
-    private const string MutexName = @"Local\OpenGepa.Singleton.v1";
-    private const string ShowEventName = @"Local\OpenGepa.Show.v1";
     private Mutex? _mutex;
     private EventWaitHandle? _showEvent;
     private RegisteredWaitHandle? _showRegistration;
     private TrayService? _tray;
     private HwndSource? _hotKeyWindow;
+    private McpPipeServer? _mcpPipeServer;
     private const int WmHotKey = 0x0312;
 
     public static AppService Services { get; private set; } = null!;
@@ -28,8 +27,8 @@ public partial class App : System.Windows.Application
             Shutdown(helperExitCode);
             return;
         }
-        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
-        _mutex = new Mutex(true, MutexName, out var first);
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, InstanceIdentity.ShowEventName);
+        _mutex = new Mutex(true, InstanceIdentity.MutexName, out var first);
         if (!first)
         {
             _showEvent.Set();
@@ -44,6 +43,7 @@ public partial class App : System.Windows.Application
             EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
                 new RoutedEventHandler((sender, _) => ThemePalette.ApplyWindowChrome((Window)sender, Services.Data.Appearance)));
             Services.PrepareLauncher();
+            _mcpPipeServer = new McpPipeServer(new McpCoordinator(Services), Dispatcher);
             RegisterShowHotKey();
             _showRegistration = ThreadPool.RegisterWaitForSingleObject(
                 _showEvent, (_, _) => Dispatcher.BeginInvoke(Services.ShowLauncher), null, Timeout.Infinite, false);
@@ -65,6 +65,7 @@ public partial class App : System.Windows.Application
         IsExiting = true;
         foreach (var window in Windows.Cast<Window>().ToArray()) window.Close();
         _tray?.Dispose();
+        var mcpPipeServer = _mcpPipeServer; _mcpPipeServer = null; mcpPipeServer?.Dispose();
         try { Services.FlushPersistence(); } catch (Exception ex) { MessageBox.Show($"設定の保存に失敗しました。\n\n{ex.Message}", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); }
         Shutdown();
     }
@@ -73,6 +74,8 @@ public partial class App : System.Windows.Application
     {
         if (_hotKeyWindow is not null) { UnregisterHotKey(_hotKeyWindow.Handle, 1); _hotKeyWindow.Dispose(); }
         _showRegistration?.Unregister(null);
+        _mcpPipeServer?.Dispose();
+        _mcpPipeServer = null;
         _showEvent?.Dispose();
         if (_mutex is not null) { try { _mutex.ReleaseMutex(); } catch (ApplicationException) { } _mutex.Dispose(); }
         base.OnExit(e);

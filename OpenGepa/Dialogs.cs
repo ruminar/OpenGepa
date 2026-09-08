@@ -45,6 +45,26 @@ public sealed class TextPromptDialog : ThemedDialogWindow
     }
 }
 
+public sealed class DescriptionDialog : ThemedDialogWindow
+{
+    private readonly System.Windows.Controls.TextBox _text = new();
+    public string? Value => DataValidator.ValidateDescription(_text.Text);
+
+    public DescriptionDialog(string targetName, string? initial)
+    {
+        Title = "OpenGepa - 説明を表示・編集"; Width = 620; Height = 430; MinWidth = 460; MinHeight = 300; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        _text.Text = initial ?? string.Empty; _text.AcceptsReturn = true; _text.TextWrapping = TextWrapping.Wrap; _text.MaxLength = 4_000;
+        _text.VerticalScrollBarVisibility = ScrollBarVisibility.Auto; _text.Margin = new Thickness(0, 6, 0, 12);
+        var ok = new Button { Content = "保存", Width = 90, IsDefault = true }; ok.Click += (_, _) => DialogResult = true;
+        var clear = new Button { Content = "未設定に戻す", Width = 110 }; clear.Click += (_, _) => { _text.Clear(); DialogResult = true; };
+        var cancel = new Button { Content = "キャンセル", Width = 90, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right }; buttons.Children.Add(clear); buttons.Children.Add(ok); buttons.Children.Add(cancel);
+        var grid = new Grid { Margin = new Thickness(16) }; grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.Children.Add(new TextBlock { Text = targetName, TextWrapping = TextWrapping.Wrap }); Grid.SetRow(_text, 1); grid.Children.Add(_text); Grid.SetRow(buttons, 2); grid.Children.Add(buttons); Content = grid;
+        Loaded += (_, _) => { _text.Focus(); _text.CaretIndex = _text.Text.Length; };
+    }
+}
+
 public sealed class ItemDialog : ThemedDialogWindow
 {
     private readonly System.Windows.Controls.TextBox _name = new(); private readonly System.Windows.Controls.TextBox _target = new(); private readonly System.Windows.Controls.ComboBox? _destination;

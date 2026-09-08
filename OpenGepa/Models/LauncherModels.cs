@@ -21,7 +21,7 @@ public abstract class ObservableModel : INotifyPropertyChanged
 
 public sealed class OpenGepaData : ObservableModel
 {
-    public const int CurrentFormatVersion = 3;
+    public const int CurrentFormatVersion = 4;
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public string? SelectedTabId { get; set; }
     public bool IsLauncherPinned { get; set; }
@@ -32,7 +32,19 @@ public sealed class OpenGepaData : ObservableModel
     public DefaultIconSettings DefaultIcons { get; set; } = new();
     public WindowsMenuSettings WindowsMenu { get; set; } = new();
     public PresetSettings Presets { get; set; } = new();
+    public McpSettings Mcp { get; set; } = new();
     public ObservableCollection<LauncherTab> Tabs { get; set; } = [];
+}
+
+/// <summary>MCPはこの配置だけで有効なローカル連携設定です。Profileには含めません。</summary>
+public sealed class McpSettings : ObservableModel
+{
+    private bool _enabled;
+    private bool _allowLaunch = true;
+    private bool _allowDescriptionEdit = true;
+    public bool Enabled { get => _enabled; set => SetField(ref _enabled, value); }
+    public bool AllowLaunch { get => _allowLaunch; set => SetField(ref _allowLaunch, value); }
+    public bool AllowDescriptionEdit { get => _allowDescriptionEdit; set => SetField(ref _allowDescriptionEdit, value); }
 }
 
 public static class UsagePeriods
@@ -169,13 +181,14 @@ public sealed class AppearanceSettings : ObservableModel
 
 public sealed class LauncherTab : ObservableModel
 {
-    private string _name = "Launcher"; private string _kind = LauncherTabKinds.Launcher; private bool _isVisible = true; private int _order; private string? _icon;
+    private string _name = "Launcher"; private string _kind = LauncherTabKinds.Launcher; private bool _isVisible = true; private int _order; private string? _icon; private string? _description;
     public string Id { get; set; } = Guid.NewGuid().ToString("D");
     public string Name { get => _name; set => SetField(ref _name, value); }
     public string Kind { get => _kind; set => SetField(ref _kind, value); }
     public bool IsVisible { get => _isVisible; set => SetField(ref _isVisible, value); }
     public int Order { get => _order; set => SetField(ref _order, value); }
     public string? Icon { get => _icon; set => SetField(ref _icon, value); }
+    public string? Description { get => _description; set => SetField(ref _description, value); }
     public ObservableCollection<LauncherNode> Children { get; set; } = [];
     /// <summary>特殊タブだけが使う、保存しない現在環境のノードです。</summary>
     [JsonIgnore] public ObservableCollection<LauncherNode>? RuntimeChildren { get; set; }
@@ -200,10 +213,11 @@ public sealed class LauncherTab : ObservableModel
 [JsonDerivedType(typeof(UsageDisplayItem), "runtimeUsage")]
 public abstract class LauncherNode : ObservableModel
 {
-    private int _order; private string? _icon;
+    private int _order; private string? _icon; private string? _description;
     public string Id { get; set; } = Guid.NewGuid().ToString("D");
     public int Order { get => _order; set => SetField(ref _order, value); }
     public string? Icon { get => _icon; set => SetField(ref _icon, value); }
+    public string? Description { get => _description; set => SetField(ref _description, value); }
     [JsonIgnore] public abstract string DisplayGlyph { get; }
 }
 
@@ -276,6 +290,8 @@ public sealed class PresetItem : LauncherNode
     [JsonIgnore] public string? IconSource { get; set; }
     [JsonIgnore] public bool RequiresConfirmation { get; set; }
     [JsonIgnore] public bool RecordLaunch { get; set; }
+    [JsonIgnore] public bool AllowMcp { get; set; }
+    [JsonIgnore] public string? FixedDescription { get; set; }
     public override string DisplayGlyph => PresetId switch
     {
         "media-previous" => "⏮",
@@ -314,6 +330,7 @@ public static class LauncherTabCopy
         Order = order,
         IsVisible = source.IsVisible,
         Icon = source.Icon,
+        Description = source.Description,
         Children = new ObservableCollection<LauncherNode>(source.Children.Select(CopyNode))
     };
 
@@ -332,6 +349,7 @@ public static class LauncherTabCopy
         if (copy is NamedLauncherItem copyItem && source is NamedLauncherItem sourceItem) copyItem.Name = sourceItem.Name;
         copy.Order = source.Order;
         copy.Icon = source.Icon;
+        copy.Description = source.Description;
         if (copy is NamedLauncherItem item && source is NamedLauncherItem sourceTargetItem) item.Target = sourceTargetItem.Target;
         if (copy is FileItem copyFile && source is FileItem sourceFile) copyFile.IsTargetMissing = sourceFile.IsTargetMissing;
         if (copy is DirectoryItem directory && source is DirectoryItem sourceDirectory) directory.Target = sourceDirectory.Target;

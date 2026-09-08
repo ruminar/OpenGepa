@@ -422,12 +422,13 @@ public sealed class PresetService
         foreach (var item in Catalog.Where(item => !settings.HiddenItemIds.Contains(item.Id) && IsAvailable(item)).OrderBy(item => item.Order))
         {
             var destination = EnsureGroupPath(result, item.Group);
-            destination.Add(new PresetItem { Id = RuntimeNodeIds.Create("preset:" + item.Id), PresetId = item.Id, Name = item.Name, Icon = PresetIcon(item.Id), IconSource = IconSource(item), RequiresConfirmation = item.RequiresConfirmation, RecordLaunch = item.RecordLaunch, Order = destination.Count });
+            destination.Add(new PresetItem { Id = RuntimeNodeIds.Create("preset:" + item.Id), PresetId = item.Id, Name = item.Name, Icon = PresetIcon(item.Id), IconSource = IconSource(item), RequiresConfirmation = item.RequiresConfirmation, RecordLaunch = item.RecordLaunch, AllowMcp = item.AllowMcp, FixedDescription = PresetDescription(item), Order = destination.Count });
         }
         return result;
     }
 
     public IReadOnlyList<PresetDefinition> AvailableDefinitions() => Catalog.Where(IsAvailable).ToList();
+    public IReadOnlyList<PresetDefinition> AllDefinitions() => Catalog;
 
     public async Task<(bool Success, string Error)> LaunchAsync(PresetItem item)
     {
@@ -501,6 +502,10 @@ public sealed class PresetService
         "media-volume-mute" => "iconSet/volumeMute.png",
         _ => null
     };
+
+    private static string PresetDescription(PresetDefinition item) => item.Id.StartsWith("media-", StringComparison.Ordinal)
+        ? $"Windowsへ「{item.Name}」のメディア操作を送ります。"
+        : $"Windowsの「{item.Name}」を開きます。";
     private static ObservableCollection<LauncherNode> EnsureGroupPath(ObservableCollection<LauncherNode> root, string path)
     {
         var current = root; var key = "";
@@ -513,6 +518,14 @@ public sealed class PresetService
         }
         return current;
     }
+
+    private static readonly HashSet<string> McpAllowedIds = new(StringComparer.Ordinal)
+    {
+        "settings", "search", "explorer", "desktop", "documents", "pictures", "music", "recent", "this-pc", "recycle-bin",
+        "installed-apps", "default-apps", "microsoft-store", "nvidia-control-panel", "amd-software", "intel-graphics-command-center", "intel-arc-control",
+        "system", "mouse-settings", "display-settings", "bluetooth-settings", "printers-settings", "event-viewer", "task-manager", "resource-monitor", "performance-monitor",
+        "windows-security", "windows-update", "media-previous", "media-play-pause", "media-next", "media-stop", "media-volume-down", "media-volume-up", "media-volume-mute"
+    };
 
     private static readonly IReadOnlyList<PresetDefinition> Catalog =
     [
@@ -528,11 +541,11 @@ public sealed class PresetService
         N("media-previous", "メディア コントロール", 860, "前の曲", ""), N("media-play-pause", "メディア コントロール", 870, "再生／一時停止", ""), N("media-next", "メディア コントロール", 880, "次の曲", ""), N("media-stop", "メディア コントロール", 890, "停止", ""), N("media-volume-down", "メディア コントロール/音量", 910, "音量を下げる", ""), N("media-volume-up", "メディア コントロール/音量", 920, "音量を上げる", ""), N("media-volume-mute", "メディア コントロール/音量", 930, "ミュート切替", ""),
     ];
 
-    private static PresetDefinition P(string id, string group, int order, string name, string file, string arguments = "", bool runAsAdmin = false, bool requiresConfirmation = false) => new(id, group, order, name, file, arguments, runAsAdmin, requiresConfirmation, true);
-    private static PresetDefinition N(string id, string group, int order, string name, string file, string arguments = "", bool runAsAdmin = false, bool requiresConfirmation = false) => new(id, group, order, name, file, arguments, runAsAdmin, requiresConfirmation, false);
+    private static PresetDefinition P(string id, string group, int order, string name, string file, string arguments = "", bool runAsAdmin = false, bool requiresConfirmation = false) => new(id, group, order, name, file, arguments, runAsAdmin, requiresConfirmation, true, McpAllowedIds.Contains(id));
+    private static PresetDefinition N(string id, string group, int order, string name, string file, string arguments = "", bool runAsAdmin = false, bool requiresConfirmation = false) => new(id, group, order, name, file, arguments, runAsAdmin, requiresConfirmation, false, McpAllowedIds.Contains(id));
 }
 
-public sealed record PresetDefinition(string Id, string Group, int Order, string Name, string FileName, string Arguments, bool RunAsAdmin, bool RequiresConfirmation, bool RecordLaunch);
+public sealed record PresetDefinition(string Id, string Group, int Order, string Name, string FileName, string Arguments, bool RunAsAdmin, bool RequiresConfirmation, bool RecordLaunch, bool AllowMcp);
 
 /// <summary>全ユーザー Start Menu に限定して昇格実行する同一EXE内ヘルパーです。</summary>
 public static class ElevatedWindowsMenuHelper

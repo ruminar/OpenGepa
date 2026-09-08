@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="OpenGepa/OpenGepa.csproj" />
+  <Project Path="OpenGepa.Mcp/OpenGepa.Mcp.csproj" />
   <Project Path="OpenGepa.Tests/OpenGepa.Tests.csproj" />
 </Solution>

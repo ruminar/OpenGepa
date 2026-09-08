@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using OpenGepa;
+using OpenGepa.McpProtocol;
 using OpenGepa.Models;
 using OpenGepa.Services;
 
@@ -14,6 +15,8 @@ var tests = new (string Name, Action Run)[]
     ("Default node icons use iconSet", TestDefaultNodeIconsUseIconSet),
     ("Polymorphic round trip", TestRoundTrip),
     ("DirectoryItem has no name field", TestDirectoryItemHasNoNameField),
+    ("Descriptions normalize, persist, and migrate", TestDescriptions),
+    ("Instance identity is placement scoped", TestInstanceIdentity),
     ("Backup recovery", TestBackupRecovery),
     ("Last-good recovery", TestLastGoodRecovery),
     ("Profile round trip and icon collision", TestProfileRoundTrip),
@@ -56,6 +59,7 @@ var tests = new (string Name, Action Run)[]
     ("GPU store app detection supports multiple vendors", TestGpuStoreAppDetection),
     ("Media key presets use global media virtual keys", TestMediaKeyPresets),
     ("Media presets create a nested volume group", TestMediaPresetHierarchy),
+    ("MCP preset policy is explicit", TestMcpPresetPolicy),
     ("Store app refresh is cached and single-flight", TestStoreAppRefreshCache),
     ("Tray toggle uses pre-click window state", TestTrayToggleRules),
     ("Windows Menu merges current-user shortcuts first", TestWindowsMenuMerge),
@@ -68,6 +72,7 @@ var tests = new (string Name, Action Run)[]
     ("Unreadable usage data starts empty", TestUnreadableUsageData),
     ("Default data seeds only an absent configuration", TestDefaultDataSeeding),
     ("Deferred persistence is serialized and does not overwrite newer data", TestDeferredPersistence),
+    ("MCP refs, cursors, search, and atomic description updates", TestMcpCoordinator),
 };
 
 var failed = 0;
@@ -93,6 +98,29 @@ static void TestDuplicateNames()
     tab.Children.Add(new GroupNode { Name = " Chrome " });
     tab.Children.Add(new FileItem { Name = "chrome", Target = "C:\\Apps\\Chrome.exe" });
     Throws<InvalidDataException>(() => new DataValidator().Validate(Data(tab)));
+}
+
+static void TestDescriptions()
+{
+    WithStore((_, store) =>
+    {
+        var group = new GroupNode { Name = "Tools", Description = "  よく使う\r\n道具  ", Order = 0 };
+        group.Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tools\\Tool.exe", Description = "実行用", Order = 0 });
+        var tab = new LauncherTab { Name = "Main", Description = " 主ランチャー ", Children = new ObservableCollection<LauncherNode> { group } };
+        var restored = store.Deserialize(store.Serialize(Data(tab)));
+        Equal("主ランチャー", restored.Tabs.First(item => !item.IsSystemTab).Description);
+        Equal("よく使う\r\n道具", ((GroupNode)restored.Tabs.First(item => !item.IsSystemTab).Children[0]).Description);
+        var legacy = store.Serialize(Data(new LauncherTab { Name = "Legacy" })).Replace("\"formatVersion\": 4", "\"formatVersion\": 3", StringComparison.Ordinal);
+        Equal(4, store.Deserialize(legacy).FormatVersion);
+        Throws<InvalidDataException>(() => new DataValidator().Validate(Data(new LauncherTab { Name = "Too long", Description = new string('x', 4_001) })));
+        Throws<InvalidDataException>(() => new DataValidator().Validate(Data(new LauncherTab { Name = "Separator", Children = new ObservableCollection<LauncherNode> { new SeparatorItem { Description = "不可" } } })));
+    });
+}
+
+static void TestInstanceIdentity()
+{
+    Equal(InstanceIdentity.FromDirectory("C:\\Apps\\OpenGepa"), InstanceIdentity.FromDirectory("c:\\apps\\opengepa\\"));
+    True(InstanceIdentity.FromDirectory("C:\\Apps\\OpenGepa") != InstanceIdentity.FromDirectory("C:\\Apps\\OpenGepa-Copy"));
 }
 
 static void TestEmptyLauncherState()
@@ -203,19 +231,20 @@ static void TestProfileRoundTrip()
     {
         var app = AppService.Create(path); app.Initialize();
         var iconPath = Path.Combine(app.Paths.IconDirectory, "sample.png"); WritePng(iconPath, System.Drawing.Color.Red);
-        var tab = new LauncherTab { Name = "Profile" }; tab.Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tools\\Tool.exe", Icon = "icon/sample.png", Order = 0 }); tab.Children.Add(new SeparatorItem { Order = 1 }); var data = Data(tab); data.Appearance = new AppearanceSettings { Theme = "custom", GroupBackgroundColor = "#112233", GroupForegroundColor = "#445566", LauncherItemBackgroundColor = "#778899", LauncherItemForegroundColor = "#AABBCC" }; app.ReplaceData(data);
+        var tab = new LauncherTab { Name = "Profile", Description = "持ち運ぶ説明" }; tab.Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tools\\Tool.exe", Icon = "icon/sample.png", Description = "項目説明", Order = 0 }); tab.Children.Add(new SeparatorItem { Order = 1 }); var data = Data(tab); data.Appearance = new AppearanceSettings { Theme = "custom", GroupBackgroundColor = "#112233", GroupForegroundColor = "#445566", LauncherItemBackgroundColor = "#778899", LauncherItemForegroundColor = "#AABBCC" }; data.Mcp.Enabled = true; app.ReplaceData(data);
         WritePng(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"), System.Drawing.Color.Goldenrod);
         var profile = Path.Combine(path, "profile.ogp"); app.ProfileService.Save(profile);
         using (var archive = System.IO.Compression.ZipFile.OpenRead(profile))
         {
             True(archive.GetEntry("manifest.json") is not null); True(archive.GetEntry($"menus/{tab.Id}.json") is not null); True(archive.GetEntry("icons/sample.png") is not null); True(archive.GetEntry("iconSet/group_default.png") is not null);
-            using (var manifest = System.Text.Json.JsonDocument.Parse(archive.GetEntry("manifest.json")!.Open())) Equal(2, manifest.RootElement.GetProperty("formatVersion").GetInt32());
+            using (var manifest = System.Text.Json.JsonDocument.Parse(archive.GetEntry("manifest.json")!.Open())) Equal(3, manifest.RootElement.GetProperty("formatVersion").GetInt32());
             using var reader = new StreamReader(archive.GetEntry($"menus/{tab.Id}.json")!.Open()); True(reader.ReadToEnd().Contains("icons/sample.png", StringComparison.Ordinal));
         }
         WritePng(iconPath, System.Drawing.Color.Blue);
         File.Delete(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"));
+        True(app.TryCommit(value => value.Mcp.Enabled = false, out var mcpError), mcpError);
         var loaded = app.ProfileService.Load(profile); var item = (FileItem)loaded.Tabs[0].Children[0];
-        Equal("icon/sample_2.png", item.Icon); True(loaded.Tabs[0].Children[1] is SeparatorItem); True(File.Exists(Path.Combine(path, "icon", "sample_2.png"))); True(File.Exists(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"))); Equal("custom", loaded.Appearance.Theme); Equal("#112233", loaded.Appearance.GroupBackgroundColor);
+        Equal("icon/sample_2.png", item.Icon); True(loaded.Tabs[0].Children[1] is SeparatorItem); True(File.Exists(Path.Combine(path, "icon", "sample_2.png"))); True(File.Exists(Path.Combine(app.Paths.IconSetDirectory, "group_default.png"))); Equal("custom", loaded.Appearance.Theme); Equal("#112233", loaded.Appearance.GroupBackgroundColor); Equal("持ち運ぶ説明", loaded.Tabs[0].Description); Equal("項目説明", item.Description); True(!loaded.Mcp.Enabled);
     }
     finally { Directory.Delete(path, true); }
 }
@@ -545,7 +574,7 @@ static void TestV01Migration()
             .Replace("\"formatVersion\": 3", "\"formatVersion\": 1", StringComparison.Ordinal)
             .Replace("\"kind\": \"launcher\",", string.Empty, StringComparison.Ordinal);
         var migrated = store.Deserialize(legacy);
-        Equal(3, migrated.FormatVersion); Equal(LauncherTabKinds.Launcher, migrated.Tabs.Single(tab => tab.Name == "Legacy").Kind);
+        Equal(4, migrated.FormatVersion); Equal(LauncherTabKinds.Launcher, migrated.Tabs.Single(tab => tab.Name == "Legacy").Kind);
         True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.WindowsMenu));
         True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.StoreApps));
         True(migrated.Tabs.Any(tab => tab.Kind == LauncherTabKinds.Presets));
@@ -904,6 +933,60 @@ static void TestDeferredPersistence()
         queue.Flush();
         Equal("Second", store.Load().Data.Tabs.Single(tab => !tab.IsSystemTab).Name);
     });
+}
+
+static void TestMcpPresetPolicy()
+{
+    var service = new PresetService(new StoreAppsService([new StoreAppEntry("Placeholder", "Placeholder!App")]));
+    var definitions = service.AllDefinitions(); Equal(65, definitions.Count); Equal(65, definitions.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count());
+    var expectedAllowed = new[]
+    {
+        "settings", "search", "explorer", "desktop", "documents", "pictures", "music", "recent", "this-pc", "recycle-bin",
+        "installed-apps", "default-apps", "microsoft-store", "nvidia-control-panel", "amd-software", "intel-graphics-command-center", "intel-arc-control",
+        "system", "mouse-settings", "display-settings", "bluetooth-settings", "printers-settings", "event-viewer", "task-manager", "resource-monitor", "performance-monitor",
+        "windows-security", "windows-update", "media-previous", "media-play-pause", "media-next", "media-stop", "media-volume-down", "media-volume-up", "media-volume-mute"
+    };
+    True(definitions.Where(item => item.AllowMcp).Select(item => item.Id).OrderBy(id => id, StringComparer.Ordinal).SequenceEqual(expectedAllowed.OrderBy(id => id, StringComparer.Ordinal), StringComparer.Ordinal), "MCP許可Presetが仕様と一致しません。");
+}
+
+static void TestMcpCoordinator()
+{
+    var path = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
+    try
+    {
+        var app = AppService.Create(path); app.Initialize();
+        var first = new FileItem { Name = "Paint", Target = "C:\\Tools\\Paint.exe", Description = "透過画像を編集する", Order = 0 };
+        var second = new UrlItem { Name = "Docs", Target = "https://example.com/docs", Order = 1 };
+        var tab = new LauncherTab { Name = "Tools", Description = "道具", Children = new ObservableCollection<LauncherNode> { first, second } };
+        var data = Data(tab); data.Mcp.Enabled = true; app.ReplaceData(data);
+        var coordinator = new McpCoordinator(app);
+
+        var listed = McpCall(coordinator, "session-a", "list_tabs", new { include_hidden = false }); True(listed.Success);
+        var tabRef = listed.Data!.Value.GetProperty("items")[0].GetProperty("ref").GetString()!;
+        var browsed = McpCall(coordinator, "session-a", "browse_items", new { parent_ref = tabRef, limit = 1 }); True(browsed.Success);
+        var itemRef = browsed.Data!.Value.GetProperty("items")[0].GetProperty("ref").GetString()!;
+        var cursor = browsed.Data.Value.GetProperty("next_cursor").GetString()!;
+
+        var detail = McpCall(coordinator, "session-a", "get_item", new { @ref = itemRef, include_target = false }); True(detail.Success); True(!detail.Data!.Value.TryGetProperty("target", out _));
+        var targetDetail = McpCall(coordinator, "session-a", "get_item", new { @ref = itemRef, include_target = true }); Equal("file", targetDetail.Data!.Value.GetProperty("target").GetProperty("kind").GetString());
+        var forged = McpCall(coordinator, "session-b", "get_item", new { @ref = itemRef }); True(!forged.Success); Equal("invalid_ref", forged.Error);
+        var searched = McpCall(coordinator, "session-a", "search_items", new { query = "透過画像", limit = 30 }); True(searched.Success); Equal("Paint", searched.Data!.Value.GetProperty("items")[0].GetProperty("name").GetString());
+
+        var atomicFailure = McpCall(coordinator, "session-a", "update_descriptions", new { updates = new object[] { new { @ref = itemRef, description = "変更後" }, new { @ref = "forged", description = "失敗" } } });
+        True(!atomicFailure.Success); Equal("透過画像を編集する", ((FileItem)app.Data.Tabs[0].Children[0]).Description);
+        var updated = McpCall(coordinator, "session-a", "update_descriptions", new { updates = new[] { new { @ref = itemRef, description = "  変更後  " } } }); True(updated.Success); Equal("変更後", ((FileItem)app.Data.Tabs[0].Children[0]).Description);
+        var staleCursor = McpCall(coordinator, "session-a", "browse_items", new { parent_ref = tabRef, limit = 1, cursor }); True(!staleCursor.Success); Equal("invalid_cursor", staleCursor.Error);
+
+        var disabledData = app.Store.Clone(app.Data); disabledData.Mcp.Enabled = false; app.ReplaceData(disabledData);
+        var disabled = McpCall(coordinator, "session-a", "list_tabs", new { include_hidden = false }); True(disabled.Success); Equal("disabled", disabled.Data!.Value.GetProperty("status").GetString());
+    }
+    finally { Directory.Delete(path, true); }
+}
+
+static IpcResponse McpCall(McpCoordinator coordinator, string session, string operation, object payload)
+{
+    var request = new IpcRequest { SessionId = session, Operation = operation, Payload = System.Text.Json.JsonSerializer.SerializeToElement(payload, Wire.Options) };
+    return coordinator.HandleAsync(request).GetAwaiter().GetResult();
 }
 
 static void WritePng(string path, System.Drawing.Color color)

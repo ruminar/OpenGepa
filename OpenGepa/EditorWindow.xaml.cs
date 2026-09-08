@@ -122,6 +122,19 @@ public partial class EditorWindow : Window
         var d = new TextPromptDialog(title, "対象", target) { Owner = this }; if (d.ShowDialog() != true) return;
         var tabId = Tab.Id; Commit(data => { var found = FindNode(data.Tabs.First(t => t.Id == tabId).Children, selected.Id); if (found is NamedLauncherItem item) item.Target = d.Value; if (found is FileItem file) file.IsTargetMissing = false; else if (found is DirectoryItem directory) directory.Target = d.Value; }, tabId);
     }
+    private void EditDescription(LauncherNode? node)
+    {
+        if (Tab is null) return;
+        var tabId = Tab.Id; var nodeId = node?.Id; var name = node is null ? Tab.Name : DataValidator.NodeLabel(node); var current = node?.Description ?? Tab.Description;
+        var dialog = new DescriptionDialog(name, current) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        Commit(data =>
+        {
+            var tab = data.Tabs.First(t => t.Id == tabId);
+            if (nodeId is null) tab.Description = dialog.Value;
+            else (FindNode(tab.Children, nodeId) ?? throw new InvalidDataException("項目が見つかりません。")).Description = dialog.Value;
+        }, tabId);
+    }
     private void ChangeIcon_Click(object sender, RoutedEventArgs e)
     {
         if (Tab is null || GetSingleSelectedNode() is not LauncherNode node) return;
@@ -260,6 +273,7 @@ public partial class EditorWindow : Window
         else if (node is UrlItem) { menu.Items.Add(ContextMenuItem("URLを変更", ChangeSelectedTarget, single)); menu.Items.Add(ContextMenuItem("ページタイトルを名前に設定", FetchPageTitle, single)); }
         if (node is not SeparatorItem)
         {
+            menu.Items.Add(ContextMenuItem("説明を表示・編集", () => EditDescription(node), single));
             menu.Items.Add(new Separator());
             menu.Items.Add(ContextMenuItem("アイコンを変更", () => ChangeIcon_Click(this, new RoutedEventArgs()), single));
             if (node is FileItem) menu.Items.Add(ContextMenuItem("アイコンを再取得", () => RetryIcon_Click(this, new RoutedEventArgs()), single));
@@ -273,7 +287,7 @@ public partial class EditorWindow : Window
     private void OpenRootContextMenu(FrameworkElement target)
     {
         SelectedIds.Clear(); _selectionAnchorId = null; _primarySelectedId = null; ApplySelectionVisuals(); target.Focus();
-        var menu = new ContextMenu(); menu.Items.Add(ContextMenuItem("すべて折りたたむ", CollapseAll, true)); menu.Items.Add(new Separator()); AddCreationItems(menu);
+        var menu = new ContextMenu(); menu.Items.Add(ContextMenuItem("すべて折りたたむ", CollapseAll, true)); menu.Items.Add(ContextMenuItem("LauncherTabの説明を表示・編集", () => EditDescription(null), Tab is not null)); menu.Items.Add(new Separator()); AddCreationItems(menu);
         target.ContextMenu = menu; menu.IsOpen = true;
     }
     private void CollapseAll()

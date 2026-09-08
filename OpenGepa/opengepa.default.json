@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 4,
   "selectedTabId": "20000000-0000-0000-0000-000000000001",
   "isLauncherPinned": false,
   "appearance": {
@@ -22,6 +22,11 @@
   },
   "presets": {
     "hiddenItemIds": []
+  },
+  "mcp": {
+    "enabled": false,
+    "allowLaunch": true,
+    "allowDescriptionEdit": true
   },
   "tabs": [
     {

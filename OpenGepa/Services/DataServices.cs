@@ -50,7 +50,7 @@ public sealed class DataValidator
     {
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion)
             throw new InvalidDataException($"未対応のformatVersionです: {data.FormatVersion}");
-        if (data.WindowsMenu is null || data.Presets is null || data.LauncherWindow is null || data.Usage is null) throw new InvalidDataException("ランチャー設定がありません。");
+        if (data.WindowsMenu is null || data.Presets is null || data.LauncherWindow is null || data.Usage is null || data.Mcp is null) throw new InvalidDataException("ランチャー設定がありません。");
         if (data.Presets.HiddenItemIds is null || data.Presets.HiddenItemIds.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("プリセットの表示設定が不正です。");
         AppearanceRules.Validate(data.Appearance);
         ValidateItemLaunch(data.ItemLaunch);
@@ -62,10 +62,11 @@ public sealed class DataValidator
         ValidateOrders(data.Tabs.Select(x => x.Order), "LauncherTab");
         foreach (var tab in data.Tabs)
         {
-            ValidateId(tab.Id, ids); tab.Name = Required(tab.Name); ValidateIcon(tab.Icon, tab.Name);
+            ValidateId(tab.Id, ids); tab.Name = Required(tab.Name); ValidateIcon(tab.Icon, tab.Name); tab.Description = ValidateDescription(tab.Description);
             if (!LauncherTabKinds.IsKnown(tab.Kind)) throw new InvalidDataException($"未対応のタブ種別です: {tab.Kind}");
             if (tab.IsSystemTab)
             {
+                if (tab.Description is not null) throw new InvalidDataException("システムタブに利用者説明は設定できません。");
                 if (tab.Children.Count != 0) throw new InvalidDataException("特殊タブに保存済みの項目は含められません。");
                 continue;
             }
@@ -82,7 +83,8 @@ public sealed class DataValidator
         foreach (var node in nodes)
         {
             ValidateId(node.Id, ids); ValidateNode(node, tabKind);
-            if (node is SeparatorItem && node.Icon is not null) throw new InvalidDataException("区切り線にアイコンは設定できません。");
+            if (node is SeparatorItem && (node.Icon is not null || node.Description is not null)) throw new InvalidDataException("区切り線にアイコンや説明は設定できません。");
+            node.Description = ValidateDescription(node.Description);
             ValidateIcon(node.Icon, NodeLabel(node));
             if (node is GroupNode group)
             {
@@ -126,6 +128,13 @@ public sealed class DataValidator
         }
     }
     public static string NodeLabel(LauncherNode node) => node switch { SeparatorItem => "区切り線", DirectoryItem directory => directory.Target, GroupNode group => group.Name, NamedLauncherItem item => item.Name, StoreAppItem store => store.Name, PresetItem preset => preset.Name, UsageDisplayItem usage => usage.Name, _ => "項目" };
+    public static string? ValidateDescription(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrEmpty(normalized)) return null;
+        if (normalized.Length > 4_000) throw new InvalidDataException("説明は4,000文字以内で指定してください。");
+        return normalized;
+    }
     private static void ValidateDefaultIcons(DefaultIconSettings icons)
     {
         ValidateIcon(icons.GroupIcon, "Group既定"); ValidateIcon(icons.DirectoryIcon, "Directory既定"); ValidateIcon(icons.UrlIcon, "URL既定"); ValidateIcon(icons.TrayIcon, "トレイ既定");
@@ -241,13 +250,15 @@ public sealed class DataStore
             data.FormatVersion = 2;
             foreach (var tab in data.Tabs ?? []) if (string.IsNullOrWhiteSpace(tab.Kind)) tab.Kind = LauncherTabKinds.Launcher;
         }
-        if (data.FormatVersion == 2) data.FormatVersion = OpenGepaData.CurrentFormatVersion;
+        if (data.FormatVersion == 2) data.FormatVersion = 3;
+        if (data.FormatVersion == 3) data.FormatVersion = OpenGepaData.CurrentFormatVersion;
         if (data.FormatVersion != OpenGepaData.CurrentFormatVersion) return;
         data.Tabs ??= [];
         data.WindowsMenu ??= new WindowsMenuSettings();
         data.Presets ??= new PresetSettings();
         data.LauncherWindow ??= new LauncherWindowSettings();
         data.Usage ??= new UsageSettings();
+        data.Mcp ??= new McpSettings();
         data.Presets.HiddenItemIds ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var tab in data.Tabs) if (string.IsNullOrWhiteSpace(tab.Kind)) tab.Kind = LauncherTabKinds.Launcher;
         BuiltInTabs.Ensure(data);

@@ -51,7 +51,7 @@ public sealed class ProfileService
         RewriteForProfile(profileData);
         using (var archive = ZipFile.Open(temp, ZipArchiveMode.Create))
         {
-            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 2, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.3.1" }, _app.Store.JsonOptions));
+            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 3, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.4.0" }, _app.Store.JsonOptions));
             WriteEntry(archive, "settings.json", JsonSerializer.Serialize(new { selectedTabId = profileData.SelectedTabId, appearance = profileData.Appearance, itemLaunch = profileData.ItemLaunch, defaultIcons = profileData.DefaultIcons, tabs = profileData.Tabs.Select(t => new { t.Id, t.IsVisible, t.Order }) }, _app.Store.JsonOptions));
             foreach (var tab in profileData.Tabs) WriteEntry(archive, $"menus/{tab.Id}.json", JsonSerializer.Serialize(tab, _app.Store.JsonOptions));
             foreach (var iconPath in EnumerateIcons(_app.Data).Distinct(StringComparer.OrdinalIgnoreCase))
@@ -90,13 +90,13 @@ public sealed class ProfileService
             }
             var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(tempRoot, "manifest.json")));
             var profileVersion = manifest.RootElement.GetProperty("formatVersion").GetInt32();
-            if (manifest.RootElement.GetProperty("format").GetString() != "OpenGepaProfile" || profileVersion is not (1 or 2)) throw new InvalidDataException("未対応のProfileです。");
+            if (manifest.RootElement.GetProperty("format").GetString() != "OpenGepaProfile" || profileVersion is not (1 or 2 or 3)) throw new InvalidDataException("未対応のProfileです。");
             var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(tempRoot, "settings.json")));
             var appearance = settings.RootElement.TryGetProperty("appearance", out var appearanceElement) ? JsonSerializer.Deserialize<AppearanceSettings>(appearanceElement.GetRawText(), _app.Store.JsonOptions) ?? new AppearanceSettings() : new AppearanceSettings();
             var itemLaunch = settings.RootElement.TryGetProperty("itemLaunch", out var itemLaunchElement) ? JsonSerializer.Deserialize<ItemLaunchSettings>(itemLaunchElement.GetRawText(), _app.Store.JsonOptions) ?? new ItemLaunchSettings() : new ItemLaunchSettings();
             var defaultIcons = settings.RootElement.TryGetProperty("defaultIcons", out var defaultIconsElement) ? JsonSerializer.Deserialize<DefaultIconSettings>(defaultIconsElement.GetRawText(), _app.Store.JsonOptions) ?? new DefaultIconSettings() : new DefaultIconSettings();
-            var localUsage = _app.Store.Clone(_app.Data).Usage;
-            var data = new OpenGepaData { SelectedTabId = settings.RootElement.GetProperty("selectedTabId").GetString(), Appearance = appearance, ItemLaunch = itemLaunch, DefaultIcons = defaultIcons, Usage = localUsage };
+            var localData = _app.Store.Clone(_app.Data);
+            var data = new OpenGepaData { SelectedTabId = settings.RootElement.GetProperty("selectedTabId").GetString(), Appearance = appearance, ItemLaunch = itemLaunch, DefaultIcons = defaultIcons, Usage = localData.Usage, Mcp = localData.Mcp };
             foreach (var menu in Directory.EnumerateFiles(Path.Combine(tempRoot, "menus"), "*.json"))
             {
                 var tab = JsonSerializer.Deserialize<LauncherTab>(File.ReadAllText(menu), _app.Store.JsonOptions) ?? throw new InvalidDataException("LauncherTabを読み込めません。");

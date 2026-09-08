@@ -35,6 +35,8 @@ public partial class SettingsWindow : Window
         WindowsMenuCurrentEditCheck.IsChecked = _app.Data.WindowsMenu.AllowCurrentUserEdit; WindowsMenuAllUsersEditCheck.IsChecked = _app.Data.WindowsMenu.AllowAllUsersEdit;
         FoldersFirstRadio.IsChecked = _app.Data.WindowsMenu.FoldersFirst; ShortcutsFirstRadio.IsChecked = !_app.Data.WindowsMenu.FoldersFirst;
         PresetItemsList.ItemsSource = _app.PresetService.AvailableDefinitions().Select(item => new PresetVisibilityRow { Id = item.Id, Name = $"{item.Group.Replace("/", " / ")} / {item.Name}", IsVisible = !_app.Data.Presets.HiddenItemIds.Contains(item.Id) }).ToList();
+        McpEnabledCheck.IsChecked = _app.Data.Mcp.Enabled; McpLaunchCheck.IsChecked = _app.Data.Mcp.AllowLaunch; McpDescriptionEditCheck.IsChecked = _app.Data.Mcp.AllowDescriptionEdit; McpPermissionsPanel.IsEnabled = _app.Data.Mcp.Enabled;
+        McpExecutablePathText.Text = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "OpenGepa.Mcp.exe"));
         UsageExclusionsList.ItemsSource = _app.UsageService.GetExclusions();
         _refreshing = false; UpdateMoveButtons();
         if (restoreFocus && TabsList.SelectedItem is LauncherTab selected)
@@ -120,6 +122,16 @@ public partial class SettingsWindow : Window
         Commit(data => { if (visible) data.Presets.HiddenItemIds.Remove(row.Id); else data.Presets.HiddenItemIds.Add(row.Id); });
     }
     private void RestorePresets_Click(object sender, RoutedEventArgs e) => Commit(data => data.Presets.HiddenItemIds.Clear());
+    private void McpSetting_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing) return;
+        Commit(data => { data.Mcp.Enabled = McpEnabledCheck.IsChecked == true; data.Mcp.AllowLaunch = McpLaunchCheck.IsChecked == true; data.Mcp.AllowDescriptionEdit = McpDescriptionEditCheck.IsChecked == true; });
+    }
+    private void CopyMcpPath_Click(object sender, RoutedEventArgs e)
+    {
+        try { System.Windows.Clipboard.SetText(McpExecutablePathText.Text); }
+        catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); }
+    }
     private void Up_Click(object sender, RoutedEventArgs e) => Move(-1);
     private void Down_Click(object sender, RoutedEventArgs e) => Move(1);
     private void Move(int delta) { if (TabsList.SelectedItem is not LauncherTab tab) return; var ordered = _app.Data.Tabs.OrderBy(x => x.Order).ToList(); var i = ordered.FindIndex(x => x.Id == tab.Id); var j = i + delta; if (j < 0 || j >= ordered.Count) return; var other = ordered[j]; Commit(data => { var a = data.Tabs.First(x => x.Id == tab.Id); var b = data.Tabs.First(x => x.Id == other.Id); (a.Order, b.Order) = (b.Order, a.Order); }, tab.Id, true); }

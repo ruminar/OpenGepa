@@ -228,6 +228,8 @@ public sealed class AppService
         return null;
     }
 
+    public LauncherNode? ResolveUsageTargetForMcp(LaunchTargetIdentity identity) => ResolveUsageTarget(identity);
+
     private string? CaptureUsageIcon(LauncherNode node, LaunchTargetIdentity identity)
     {
         var configured = node.Icon ?? IconSetService.GetDefaultNodeIcon(node) ?? node switch
@@ -521,37 +523,38 @@ public sealed class TrayService : IDisposable
     public void Dispose() { _icon.Visible = false; _icon.Dispose(); }
 }
 
+public sealed record LaunchResult(bool Success, string Error, string? UsageError = null);
+
 public sealed class LaunchService
 {
     private readonly AppService _app;
     public LaunchService(AppService app) => _app = app;
-    public async Task<(bool Success, string Error)> LaunchAsync(LauncherNode item)
+    public async Task<LaunchResult> LaunchAsync(LauncherNode item, bool waitForUsageSave = false)
     {
         try
         {
             if (item is UsageDisplayItem display)
             {
-                if (display.CurrentItem is null) return (false, "現在の起動対象を利用できません。");
+                if (display.CurrentItem is null) return new(false, "現在の起動対象を利用できません。");
                 item = display.CurrentItem;
             }
             if (item is StoreAppItem storeApp)
             {
                 var result = await StoreAppsService.LaunchAsync(storeApp.Aumid);
-                if (result.Success) RecordSuccessfulLaunch(item);
-                return result;
+                var usageError = result.Success ? RecordSuccessfulLaunch(item, waitForUsageSave) : null;
+                return new(result.Success, result.Error, usageError);
             }
             if (item is PresetItem preset)
             {
                 var result = await _app.PresetService.LaunchAsync(preset);
-                if (result.Success) RecordSuccessfulLaunch(item);
-                return result;
+                var usageError = result.Success ? RecordSuccessfulLaunch(item, waitForUsageSave) : null;
+                return new(result.Success, result.Error, usageError);
             }
             if (item is WindowsMenuShortcutItem windowsMenu)
             {
                 if (!File.Exists(windowsMenu.Target)) throw new FileNotFoundException("Start Menu のショートカットが見つかりません。", windowsMenu.Target);
                 await Task.Run(() => Process.Start(new ProcessStartInfo(windowsMenu.Target) { UseShellExecute = true }));
-                RecordSuccessfulLaunch(item);
-                return (true, string.Empty);
+                return new(true, string.Empty, RecordSuccessfulLaunch(item, waitForUsageSave));
             }
             var target = item switch { NamedLauncherItem named => named.Target, DirectoryItem directory => directory.Target, _ => throw new InvalidDataException("起動できない項目です。") };
             var repaired = false;
@@ -573,18 +576,17 @@ public sealed class LaunchService
             {
                 var newTarget = target;
                 if (!_app.TryCommit(data => { var found = (FileItem)FindItem(data, repairedFile.Id)!; found.Target = newTarget; found.IsTargetMissing = false; }, out var saveError))
-                    return (false, "起動には成功しましたが、補正したパスを保存できませんでした: " + saveError);
+                    return new(false, "起動には成功しましたが、補正したパスを保存できませんでした: " + saveError);
             }
-            RecordSuccessfulLaunch(item);
-            return (true, "");
+            return new(true, "", RecordSuccessfulLaunch(item, waitForUsageSave));
         }
-        catch (Exception ex) { return (false, ex.Message); }
+        catch (Exception ex) { return new(false, ex.Message); }
     }
 
-    private void RecordSuccessfulLaunch(LauncherNode item)
+    private string? RecordSuccessfulLaunch(LauncherNode item, bool waitForSave)
     {
-        try { _app.UsageService.RecordSuccessfulLaunch(item); }
-        catch { }
+        try { return _app.UsageService.RecordSuccessfulLaunch(item, waitForSave); }
+        catch (Exception ex) { return ex.Message; }
     }
 
     public bool OpenProperties(IntPtr owner, string target) => SHObjectProperties(owner, 0x2, target, null);
