@@ -488,11 +488,13 @@ static void TestFileItemShortcutConversion()
         var app = AppService.Create(root); app.Initialize(); var tab = app.Data.Tabs.Single(item => !item.IsSystemTab); var item = new FileItem { Name = "OpenGepa", Target = Environment.ProcessPath! };
         True(app.TryCommit(data => data.Tabs.Single(value => value.Id == tab.Id).Children.Add(item), out var error), error);
         True(app.TryConvertFileItemToManagedShortcut(tab.Id, item.Id, out error), error);
-        var shortcut = ((FileItem)app.Data.Tabs.Single(value => value.Id == tab.Id).Children.Single()).Target;
+        var converted = (FileItem)app.Data.Tabs.Single(value => value.Id == tab.Id).Children.Single(); var shortcut = converted.Target;
         True(shortcut.StartsWith(app.Paths.ShortcutDirectory, StringComparison.OrdinalIgnoreCase) && File.Exists(shortcut));
+        True(converted.Icon is not null && File.Exists(Path.Combine(root, converted.Icon.Replace('/', Path.DirectorySeparatorChar))));
         True(app.ManagedShortcutService.TryReadTarget(shortcut, out var details, out error), error); Equal(Environment.ProcessPath!, details!.Target);
         True(app.TryResolveShortcutFileItem(tab.Id, item.Id, shortcut, details.Target, out error), error);
-        Equal(Environment.ProcessPath!, ((FileItem)app.Data.Tabs.Single(value => value.Id == tab.Id).Children.Single()).Target);
+        var resolved = (FileItem)app.Data.Tabs.Single(value => value.Id == tab.Id).Children.Single(); Equal(Environment.ProcessPath!, resolved.Target);
+        True(resolved.Icon is not null && File.Exists(Path.Combine(root, resolved.Icon.Replace('/', Path.DirectorySeparatorChar))));
     }
     finally { Directory.Delete(root, true); }
 }
