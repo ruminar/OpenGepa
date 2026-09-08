@@ -173,6 +173,8 @@ public sealed class WindowsMenuService
     }
 }
 
+public sealed record ShortcutTargetDetails(string Target, string Arguments, string WorkingDirectory);
+
 /// <summary>OpenGepa の shortcut/ にだけ作成する、通常ランチャー用ショートカットです。</summary>
 public sealed class ManagedShortcutService
 {
@@ -216,6 +218,22 @@ public sealed class ManagedShortcutService
         link.WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         link.Save();
         return path;
+    }
+    public bool TryReadTarget(string shortcutPath, out ShortcutTargetDetails? details, out string error)
+    {
+        details = null;
+        try
+        {
+            if (!Path.IsPathFullyQualified(shortcutPath) || !shortcutPath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) || !File.Exists(shortcutPath)) { error = "ショートカットファイルが見つかりません。"; return false; }
+            dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+            dynamic link = shell.CreateShortcut(shortcutPath);
+            var target = (string?)link.TargetPath;
+            if (string.IsNullOrWhiteSpace(target) || !Path.IsPathFullyQualified(target) || !File.Exists(target)) { error = "ショートカットの実体ファイルが見つかりません。"; return false; }
+            details = new ShortcutTargetDetails(Path.GetFullPath(target), (string?)link.Arguments ?? string.Empty, (string?)link.WorkingDirectory ?? string.Empty);
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception ex) { error = ex.Message; return false; }
     }
     public void Delete(string path)
     {

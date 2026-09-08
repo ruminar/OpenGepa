@@ -369,6 +369,50 @@ public sealed class AppService
         }
         catch (Exception ex) { error = ex.Message; return false; }
     }
+    public bool TryResolveShortcutFileItem(string tabId, string itemId, string expectedShortcut, string target, out string error)
+    {
+        if (!Path.IsPathFullyQualified(target) || !File.Exists(target)) { error = "ショートカットの実体ファイルが見つかりません。"; return false; }
+        return TryCommit(data =>
+        {
+            var tab = data.Tabs.FirstOrDefault(tab => tab.Id == tabId) ?? throw new InvalidDataException("App Launcherが見つかりません。");
+            if (tab.IsSystemTab || tab.IsWebTab) throw new InvalidDataException("このタブの項目は変更できません。");
+            var file = FindNode(tab.Children, itemId) as FileItem ?? throw new InvalidDataException("FileItemが見つかりません。");
+            if (!string.Equals(file.Target, expectedShortcut, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("ショートカットの起動先が変更されています。もう一度操作してください。");
+            file.Target = target; file.IsTargetMissing = false;
+        }, out error);
+    }
+    public bool TryConvertFileItemToManagedShortcut(string tabId, string itemId, out string error)
+    {
+        string? shortcut = null;
+        try
+        {
+            var tab = Data.Tabs.FirstOrDefault(value => value.Id == tabId) ?? throw new InvalidDataException("App Launcherが見つかりません。");
+            if (tab.IsSystemTab || tab.IsWebTab) throw new InvalidDataException("このタブの項目は変更できません。");
+            var file = FindNode(tab.Children, itemId) as FileItem ?? throw new InvalidDataException("FileItemが見つかりません。");
+            var originalTarget = file.Target;
+            if (originalTarget.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("ショートカットは変換できません。");
+            if (!Path.IsPathFullyQualified(originalTarget) || !File.Exists(originalTarget)) throw new FileNotFoundException("起動対象が見つかりません。", originalTarget);
+            shortcut = ManagedShortcutService.Create(originalTarget, file.Name);
+            if (!TryCommit(data =>
+            {
+                var currentTab = data.Tabs.FirstOrDefault(value => value.Id == tabId) ?? throw new InvalidDataException("App Launcherが見つかりません。");
+                var current = FindNode(currentTab.Children, itemId) as FileItem ?? throw new InvalidDataException("FileItemが見つかりません。");
+                if (!string.Equals(current.Target, originalTarget, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("起動対象が変更されています。もう一度操作してください。");
+                current.Target = shortcut; current.IsTargetMissing = false;
+            }, out error))
+            {
+                ManagedShortcutService.Delete(shortcut);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (shortcut is not null) ManagedShortcutService.Delete(shortcut);
+            error = ex.Message;
+            return false;
+        }
+    }
     /// <summary>ストアアプリを起動する管理ショートカットを通常ランチャーへ登録します。</summary>
     public bool TryCreateStoreAppShortcut(string tabId, string? parentId, string? targetId, bool after, string displayName, string aumid, string? sourceIcon, out FileItem? item, out string error)
     {

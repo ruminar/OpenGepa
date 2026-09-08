@@ -365,7 +365,13 @@ public partial class MainWindow : Window
         if (node is FileItem or DirectoryItem or UrlItem) menu.Items.Add(Menu("起動記録に残さない", () => ExcludeFromUsage(node)));
         if (node is not GroupNode) menu.Items.Add(new Separator());
         if (node is not DirectoryItem) menu.Items.Add(Menu("名前を変更", () => RenameNode(node)));
-        if (node is FileItem file) { menu.Items.Add(Menu("起動対象を変更", () => ChangeTarget(file))); menu.Items.Add(Menu("Windowsのプロパティを開く", () => OpenProperties(file))); }
+        if (node is FileItem file)
+        {
+            menu.Items.Add(Menu("起動対象を変更", () => ChangeTarget(file)));
+            if (file.Target.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) menu.Items.Add(Menu("ショートカットを実体参照に変換", () => ResolveShortcutTarget(file)));
+            else menu.Items.Add(Menu("OpenGepa管理ショートカットへ変換", () => ConvertToManagedShortcut(file)));
+            menu.Items.Add(Menu("Windowsのプロパティを開く", () => OpenProperties(file)));
+        }
         else if (node is DirectoryItem directory) menu.Items.Add(Menu("参照先を変更", () => ChangeDirectoryTarget(directory)));
         else if (node is UrlItem url) { menu.Items.Add(Menu("URLを変更", () => ChangeTarget(url))); menu.Items.Add(Menu("ページタイトルを名前に設定", () => _ = FetchPageTitle(url, SelectedTabId))); }
         menu.Items.Add(new Separator()); menu.Items.Add(Menu("アイコンを変更", () => ChangeNodeIcon(node))); if (!web && node is FileItem retry) menu.Items.Add(Menu("アイコンを再取得", () => RetryNodeIcon(retry))); if (node is UrlItem site) { menu.Items.Add(Menu("サイトのアイコンを取得", () => _ = FetchUrlIcon(site, SelectedTabId))); menu.Items.Add(Menu("アイコンURLを指定して取得", () => FetchSpecifiedUrlIcon(site, SelectedTabId))); } menu.Items.Add(Menu("アイコンを標準に戻す", () => SetNodeIcon(node.Id, null))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("削除", () => DeleteNode(node)));
@@ -458,6 +464,17 @@ public partial class MainWindow : Window
     {
         if (ShowDialog(() => MessageBox.Show($"「{usage.Name}」の起動履歴をすべて削除しますか？\n使用頻度は変更しません。この操作は元に戻せません。", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)) != MessageBoxResult.Yes) return;
         if (!_app.UsageService.TryRemoveHistoryTarget(usage.UsageKey, out var error)) ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error));
+    }
+    private void ResolveShortcutTarget(FileItem file)
+    {
+        if (!_app.ManagedShortcutService.TryReadTarget(file.Target, out var details, out var error)) { ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning)); return; }
+        var lost = ShortcutConversionRules.DescribeLostSettings(details!);
+        if (lost is not null && ShowDialog(() => MessageBox.Show($"「{file.Name}」をショートカットの実体参照へ変更すると、次の設定は引き継がれません。\n\n{lost}\n\n続行しますか？", "OpenGepa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)) != MessageBoxResult.Yes) return;
+        if (!_app.TryResolveShortcutFileItem(SelectedTabId, file.Id, file.Target, details!.Target, out error)) ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error));
+    }
+    private void ConvertToManagedShortcut(FileItem file)
+    {
+        if (!_app.TryConvertFileItemToManagedShortcut(SelectedTabId, file.Id, out var error)) ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error));
     }
     private void AddFile(string? parentId)
     {

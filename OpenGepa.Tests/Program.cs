@@ -20,6 +20,8 @@ var tests = new (string Name, Action Run)[]
     ("v0.2 profile format remains readable", TestV02ProfileCompatibility),
     ("Profile excludes system tabs and carries managed shortcuts", TestProfileSpecialTabExclusion),
     ("Managed shortcut creation leaves no duplicate orphan", TestManagedShortcutCreation),
+    ("Shortcut conversion warns only for lost settings", TestShortcutConversionRules),
+    ("FileItem converts between direct target and managed shortcut", TestFileItemShortcutConversion),
     ("Directory candidate defaults", TestDirectoryCandidateDefaults),
     ("File dialog filter", TestFileDialogFilter),
     ("Appearance settings", TestAppearanceSettings),
@@ -469,6 +471,30 @@ static void TestManagedShortcutCreation()
         Equal(1, app.Data.Tabs.Single(item => item.Id == tab.Id).Children.Count);
     }
     finally { Directory.Delete(path, true); }
+}
+
+static void TestShortcutConversionRules()
+{
+    Equal(null, ShortcutConversionRules.DescribeLostSettings(new ShortcutTargetDetails("C:\\Tools\\Tool.exe", "", "C:\\Tools")));
+    var lost = ShortcutConversionRules.DescribeLostSettings(new ShortcutTargetDetails("C:\\Tools\\Tool.exe", "--safe", "C:\\Other"));
+    True(lost is not null && lost.Contains("起動引数", StringComparison.Ordinal) && lost.Contains("作業フォルダ", StringComparison.Ordinal));
+}
+
+static void TestFileItemShortcutConversion()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var app = AppService.Create(root); app.Initialize(); var tab = app.Data.Tabs.Single(item => !item.IsSystemTab); var item = new FileItem { Name = "OpenGepa", Target = Environment.ProcessPath! };
+        True(app.TryCommit(data => data.Tabs.Single(value => value.Id == tab.Id).Children.Add(item), out var error), error);
+        True(app.TryConvertFileItemToManagedShortcut(tab.Id, item.Id, out error), error);
+        var shortcut = ((FileItem)app.Data.Tabs.Single(value => value.Id == tab.Id).Children.Single()).Target;
+        True(shortcut.StartsWith(app.Paths.ShortcutDirectory, StringComparison.OrdinalIgnoreCase) && File.Exists(shortcut));
+        True(app.ManagedShortcutService.TryReadTarget(shortcut, out var details, out error), error); Equal(Environment.ProcessPath!, details!.Target);
+        True(app.TryResolveShortcutFileItem(tab.Id, item.Id, shortcut, details.Target, out error), error);
+        Equal(Environment.ProcessPath!, ((FileItem)app.Data.Tabs.Single(value => value.Id == tab.Id).Children.Single()).Target);
+    }
+    finally { Directory.Delete(root, true); }
 }
 static void TestWindowIconSet()
 {
