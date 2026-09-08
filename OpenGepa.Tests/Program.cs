@@ -40,6 +40,7 @@ var tests = new (string Name, Action Run)[]
     ("Browser URL drop text", TestBrowserUrlDropText),
     ("Browser URL data transfer", TestBrowserUrlDataTransfer),
     ("URL registration names", TestUrlRegistrationNames),
+    ("Windows Menu shortcut drag registers an independent file item", TestWindowsMenuShortcutRegistration),
     ("Site icon HTML candidates", TestSiteIconHtmlCandidates),
     ("Specified bookmark icon URL resolves relative paths", TestSpecifiedBookmarkIconUrl),
     ("v0.1 data migrates to built-in tabs", TestV01Migration),
@@ -392,6 +393,17 @@ static void TestUrlRegistrationNames()
     var nodes = new[] { new UrlItem { Name = "example.com" } }; var uri = new Uri("https://example.com/docs?a=1");
     Equal("example.com/docs", UrlRegistrationRules.UniqueDroppedName(uri, nodes));
     Equal("Title_2", UrlRegistrationRules.UniqueName("Title", new LauncherNode[] { new UrlItem { Name = "Title" }, new UrlItem { Name = "Title_1" } }));
+}
+static void TestWindowsMenuShortcutRegistration()
+{
+    var siblings = new LauncherNode[] { new FileItem { Name = "Tool", Target = "C:\\Existing\\Tool.lnk" } };
+    var source = new WindowsMenuShortcutDragInfo("Tool", "C:\\Users\\ana\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Tool.lnk");
+    True(WindowsMenuShortcutRegistrationRules.TryCreateFileItem(source, siblings, out var item));
+    True(item is not null); Equal("Tool_1", item!.Name); Equal(source.ShortcutPath, item.Target); True(item is not WindowsMenuShortcutItem);
+    True(WindowsMenuShortcutRegistrationRules.IsValidSource(source));
+    True(!WindowsMenuShortcutRegistrationRules.IsValidSource(new WindowsMenuShortcutDragInfo("Tool", "relative\\Tool.lnk")));
+    True(!WindowsMenuShortcutRegistrationRules.TryCreateFileItem(new WindowsMenuShortcutDragInfo("Tool", "relative\\Tool.lnk"), siblings, out _));
+    True(!WindowsMenuShortcutRegistrationRules.TryCreateFileItem(new WindowsMenuShortcutDragInfo("Tool", "C:\\Tools\\Tool.exe"), siblings, out _));
 }
 static void TestSiteIconHtmlCandidates()
 {

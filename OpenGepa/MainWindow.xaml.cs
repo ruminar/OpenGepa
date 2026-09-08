@@ -21,6 +21,8 @@ public partial class MainWindow : Window
     private bool _pressedTreeModifier, _lastTreeClickModifier;
     private System.Windows.Point _treeDragStart, _tabDragStart;
     private string? _treeDragNodeId, _tabDragTabId;
+    private WindowsMenuShortcutDragInfo? _windowsMenuShortcutDrag;
+    private bool _treeDragStarted;
     private const string TreeReorderDragFormat = "OpenGepa.MainTreeReorder";
     private const string TabReorderDragFormat = "OpenGepa.MainTabReorder";
     private System.Windows.Controls.Primitives.Popup? _renamePopup;
@@ -156,6 +158,8 @@ public partial class MainWindow : Window
         _pressedTreeExpander = FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(source) is not null;
         _pressedTreeModifier = LauncherClickRules.BlocksMouseAction(Keyboard.Modifiers);
         _treeDragNodeId = null;
+        _windowsMenuShortcutDrag = null;
+        _treeDragStarted = false;
 
         if (_pressedTreeItem?.DataContext is SeparatorItem &&
             !SeparatorInteractionRules.AllowsLauncherSelection(Keyboard.Modifiers))
@@ -167,14 +171,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!_pressedTreeExpander && _app.SelectedTab?.Kind == LauncherTabKinds.WindowsMenu && _pressedTreeItem?.DataContext is WindowsMenuShortcutItem shortcut)
+        {
+            _treeDragStart = e.GetPosition(LauncherTree);
+            _windowsMenuShortcutDrag = new WindowsMenuShortcutDragInfo(shortcut.Name, shortcut.Target);
+            return;
+        }
         if ((Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.None && !_pressedTreeExpander && _app.SelectedTab is { IsSystemTab: false } && _pressedTreeItem?.DataContext is LauncherNode node) { _treeDragStart = e.GetPosition(LauncherTree); _treeDragNodeId = node.Id; }
     }
     private async void LauncherTree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         var pressedItem = _pressedTreeItem; var pressedExpander = _pressedTreeExpander; var modified = _pressedTreeModifier || LauncherClickRules.BlocksMouseAction(Keyboard.Modifiers);
-        _pressedTreeItem = null; _pressedTreeExpander = false; _pressedTreeModifier = false; _lastTreeClickModifier = modified;
+        var dragged = _treeDragStarted;
+        _pressedTreeItem = null; _pressedTreeExpander = false; _pressedTreeModifier = false; _lastTreeClickModifier = modified; _treeDragStarted = false;
         var releasedItem = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
-        if (pressedItem is null || pressedExpander || modified || !ReferenceEquals(pressedItem, releasedItem)) return;
+        if (dragged || pressedItem is null || pressedExpander || modified || !ReferenceEquals(pressedItem, releasedItem)) return;
         if (pressedItem.DataContext is GroupNode && e.ClickCount == 1) { pressedItem.IsExpanded = !pressedItem.IsExpanded; e.Handled = true; return; }
         if (pressedItem.DataContext is LauncherNode launcher && ShouldLaunch(launcher, 1)) { e.Handled = true; await Launch(launcher); }
     }
@@ -198,9 +209,16 @@ public partial class MainWindow : Window
     }
     private void LauncherTree_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || _treeDragNodeId is null) return;
+        if (e.LeftButton != MouseButtonState.Pressed || (_treeDragNodeId is null && _windowsMenuShortcutDrag is null)) return;
         var point = e.GetPosition(LauncherTree); if (Math.Abs(point.X - _treeDragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(point.Y - _treeDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-        var id = _treeDragNodeId; _treeDragNodeId = null;
+        _treeDragStarted = true;
+        if (_windowsMenuShortcutDrag is { } shortcut)
+        {
+            _windowsMenuShortcutDrag = null;
+            DragDrop.DoDragDrop(LauncherTree, new System.Windows.DataObject(WindowsMenuShortcutRegistrationRules.DragFormat, shortcut), System.Windows.DragDropEffects.Copy);
+            return;
+        }
+        var id = _treeDragNodeId!; _treeDragNodeId = null;
         DragDrop.DoDragDrop(LauncherTree, new System.Windows.DataObject(TreeReorderDragFormat, id), System.Windows.DragDropEffects.Move);
     }
     private void LauncherTree_DragOver(object sender, System.Windows.DragEventArgs e)

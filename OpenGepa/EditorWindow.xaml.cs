@@ -223,6 +223,10 @@ public partial class EditorWindow : Window
     {
         if (e.Handled) return;
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = container?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
+        if (!IsWebTab && e.Data.GetData(WindowsMenuShortcutRegistrationRules.DragFormat) is WindowsMenuShortcutDragInfo shortcut)
+        {
+            AddWindowsMenuShortcut(shortcut, destinationId, null, false); e.Handled = true; return;
+        }
         if (ExternalDropRules.TryGetUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
         if (IsWebTab || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
         var paths = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop)!;
@@ -317,6 +321,14 @@ public partial class EditorWindow : Window
         }
         else
         {
+            if (!IsWebTab && e.Data.GetData(WindowsMenuShortcutRegistrationRules.DragFormat) is WindowsMenuShortcutDragInfo)
+            {
+                var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var targetNode = container?.DataContext as LauncherNode;
+                var relativeY = container is null || container.ActualHeight <= 0 ? .5 : e.GetPosition(container).Y / container.ActualHeight;
+                var enterGroup = targetNode is GroupNode && relativeY is >= .25 and <= .75;
+                if (container is null || enterGroup) ClearDropInsertion(); else ShowDropInsertion(container, relativeY > .5);
+                e.Effects = System.Windows.DragDropEffects.Copy; e.Handled = true; return;
+            }
             ClearDropInsertion();
             if ((!IsWebTab && e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) || ExternalDropRules.TryGetUrl(e.Data, out _)) { e.Effects = System.Windows.DragDropEffects.Copy; e.Handled = true; }
         }
@@ -328,6 +340,14 @@ public partial class EditorWindow : Window
         if (!e.Data.GetDataPresent(NodeDragFormat))
         {
             var externalTarget = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = externalTarget?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
+            if (!IsWebTab && e.Data.GetData(WindowsMenuShortcutRegistrationRules.DragFormat) is WindowsMenuShortcutDragInfo shortcut)
+            {
+                var shortcutTargetNode = externalTarget?.DataContext as LauncherNode;
+                var shortcutRelativeY = externalTarget is null || externalTarget.ActualHeight <= 0 ? .5 : e.GetPosition(externalTarget).Y / externalTarget.ActualHeight;
+                var shortcutEnterGroup = shortcutTargetNode is GroupNode && shortcutRelativeY is >= .25 and <= .75;
+                AddWindowsMenuShortcut(shortcut, shortcutEnterGroup ? shortcutTargetNode!.Id : destinationId, shortcutEnterGroup ? null : shortcutTargetNode?.Id, shortcutRelativeY > .5);
+                e.Handled = true; return;
+            }
             if (ExternalDropRules.TryGetUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
             if (!IsWebTab && e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) && externalTarget?.DataContext is LauncherNode externalNode) SelectOnly(externalNode.Id, externalTarget);
             return;
@@ -342,6 +362,27 @@ public partial class EditorWindow : Window
         var targetId = enterGroup ? null : targetNode?.Id; var after = relativeY > .5;
         var tabId = Tab.Id;
         Commit(data => MoveNodes(data, drag.SourceTabId, tabId, drag.NodeIds, parentId, targetId, after), tabId);
+    }
+    private void AddWindowsMenuShortcut(WindowsMenuShortcutDragInfo source, string? parentId, string? targetId, bool after)
+    {
+        if (Tab is null || IsWebTab) return;
+        if (!WindowsMenuShortcutRegistrationRules.IsValidSource(source) || !File.Exists(source.ShortcutPath))
+        {
+            MessageBox.Show("Windows Menuのショートカットが見つからないか、登録できる形式ではありません。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var tabId = Tab.Id; FileItem? added = null;
+        if (!Commit(data =>
+        {
+            var tab = data.Tabs.First(t => t.Id == tabId);
+            var collection = parentId is null ? tab.Children : FindGroup(tab.Children, parentId)?.Children ?? throw new InvalidDataException("登録先Groupが見つかりません。");
+            if (!WindowsMenuShortcutRegistrationRules.TryCreateFileItem(source, collection, out var item) || item is null)
+                throw new InvalidDataException("Windows Menuのショートカットを登録できません。");
+            var index = targetId is null ? collection.Count : collection.ToList().FindIndex(node => node.Id == targetId);
+            if (index < 0) index = collection.Count; else if (after) index++;
+            collection.Insert(index, item); NormalizeOrders(tab.Children); added = item;
+        }, tabId)) return;
+        TryAddIcon(added!.Id, added.Target, added.Name, tabId);
     }
     private void AddDroppedUrl(string target, string? destinationId)
     {
