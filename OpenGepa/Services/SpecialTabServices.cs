@@ -196,6 +196,27 @@ public sealed class ManagedShortcutService
         WindowsMenuService.CreateLink(path, target);
         return path;
     }
+    public string CreateStoreApp(string aumid, string displayName)
+    {
+        if (string.IsNullOrWhiteSpace(aumid) || !aumid.Contains('!')) throw new InvalidDataException("ストアアプリのAUMIDが不正です。");
+        Directory.CreateDirectory(_paths.ShortcutDirectory);
+        var invalid = Path.GetInvalidFileNameChars();
+        var stem = new string(NameRules.Normalize(displayName).Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray()).TrimEnd(' ', '.');
+        if (string.IsNullOrWhiteSpace(stem)) stem = "StoreApp";
+        string path;
+        for (var index = 1; ; index++)
+        {
+            path = Path.Combine(_paths.ShortcutDirectory, stem + (index == 1 ? string.Empty : $"_{index}") + ".lnk");
+            if (!File.Exists(path)) break;
+        }
+        dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+        dynamic link = shell.CreateShortcut(path);
+        link.TargetPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+        link.Arguments = $"shell:AppsFolder\\{aumid}";
+        link.WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        link.Save();
+        return path;
+    }
     public void Delete(string path)
     {
         var fullPath = Path.GetFullPath(path);

@@ -40,7 +40,8 @@ var tests = new (string Name, Action Run)[]
     ("Browser URL drop text", TestBrowserUrlDropText),
     ("Browser URL data transfer", TestBrowserUrlDataTransfer),
     ("URL registration names", TestUrlRegistrationNames),
-    ("Windows Menu shortcut drag registers an independent file item", TestWindowsMenuShortcutRegistration),
+    ("System-tab drag registers independent launcher items", TestLauncherRegistration),
+    ("Store app drag creates an independent managed shortcut", TestStoreAppShortcutRegistration),
     ("Site icon HTML candidates", TestSiteIconHtmlCandidates),
     ("Specified bookmark icon URL resolves relative paths", TestSpecifiedBookmarkIconUrl),
     ("v0.1 data migrates to built-in tabs", TestV01Migration),
@@ -394,16 +395,35 @@ static void TestUrlRegistrationNames()
     Equal("example.com/docs", UrlRegistrationRules.UniqueDroppedName(uri, nodes));
     Equal("Title_2", UrlRegistrationRules.UniqueName("Title", new LauncherNode[] { new UrlItem { Name = "Title" }, new UrlItem { Name = "Title_1" } }));
 }
-static void TestWindowsMenuShortcutRegistration()
+static void TestLauncherRegistration()
 {
     var siblings = new LauncherNode[] { new FileItem { Name = "Tool", Target = "C:\\Existing\\Tool.lnk" } };
-    var source = new WindowsMenuShortcutDragInfo("Tool", "C:\\Users\\ana\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Tool.lnk");
-    True(WindowsMenuShortcutRegistrationRules.TryCreateFileItem(source, siblings, out var item));
-    True(item is not null); Equal("Tool_1", item!.Name); Equal(source.ShortcutPath, item.Target); True(item is not WindowsMenuShortcutItem);
-    True(WindowsMenuShortcutRegistrationRules.IsValidSource(source));
-    True(!WindowsMenuShortcutRegistrationRules.IsValidSource(new WindowsMenuShortcutDragInfo("Tool", "relative\\Tool.lnk")));
-    True(!WindowsMenuShortcutRegistrationRules.TryCreateFileItem(new WindowsMenuShortcutDragInfo("Tool", "relative\\Tool.lnk"), siblings, out _));
-    True(!WindowsMenuShortcutRegistrationRules.TryCreateFileItem(new WindowsMenuShortcutDragInfo("Tool", "C:\\Tools\\Tool.exe"), siblings, out _));
+    var windowsMenu = new WindowsMenuShortcutItem { Name = "Tool", Target = "C:\\Users\\ana\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Tool.lnk" };
+    True(LauncherRegistrationRules.TryCreateDragInfo(windowsMenu, out var source));
+    True(LauncherRegistrationRules.TryCreateNode(source, siblings, out var item));
+    True(item is FileItem and not WindowsMenuShortcutItem); Equal("Tool_1", ((FileItem)item!).Name); Equal(windowsMenu.Target, ((FileItem)item).Target);
+    var history = new UsageDisplayItem { IsAvailable = true, CurrentItem = new UrlItem { Name = "Site", Target = "https://example.com" } };
+    True(LauncherRegistrationRules.TryCreateDragInfo(history, out var historySource)); True(historySource?.Kind == LauncherRegistrationKind.Url);
+    True(LauncherRegistrationRules.TryCreateNode(historySource, siblings, out var historyItem)); True(historyItem is UrlItem { Target: "https://example.com" });
+    var frequency = new UsageDisplayItem { IsAvailable = true, CurrentItem = new StoreAppItem { Name = "Store", Aumid = "Example.Package!App" } };
+    True(LauncherRegistrationRules.TryCreateDragInfo(frequency, out var storeSource)); True(storeSource?.Kind == LauncherRegistrationKind.StoreApp);
+    var unavailable = new UsageDisplayItem { IsAvailable = false }; True(!LauncherRegistrationRules.TryCreateDragInfo(unavailable, out _));
+    True(!LauncherRegistrationRules.IsValidSource(new LauncherRegistrationDragInfo(LauncherRegistrationKind.File, "Tool", "relative\\Tool.lnk", null)));
+}
+static void TestStoreAppShortcutRegistration()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var app = AppService.Create(root); app.Initialize(); var tab = app.Data.Tabs.First(item => !item.IsSystemTab);
+        True(app.TryCreateStoreAppShortcut(tab.Id, null, null, false, "Store App", "Example.Package!App", null, out var item, out var error), error);
+        True(item is not null && File.Exists(item.Target));
+        dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!; dynamic link = shell.CreateShortcut(item!.Target);
+        True(((string)link.TargetPath).EndsWith("explorer.exe", StringComparison.OrdinalIgnoreCase)); Equal("shell:AppsFolder\\Example.Package!App", (string)link.Arguments);
+        True(app.UsageService.TryClearAll(out error), error);
+        var registered = (FileItem)app.Data.Tabs.Single(current => current.Id == tab.Id).Children.Single(); Equal(item.Target, registered.Target); True(File.Exists(registered.Target));
+    }
+    finally { Directory.Delete(root, true); }
 }
 static void TestSiteIconHtmlCandidates()
 {

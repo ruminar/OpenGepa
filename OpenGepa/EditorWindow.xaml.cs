@@ -223,9 +223,9 @@ public partial class EditorWindow : Window
     {
         if (e.Handled) return;
         var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = container?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
-        if (!IsWebTab && e.Data.GetData(WindowsMenuShortcutRegistrationRules.DragFormat) is WindowsMenuShortcutDragInfo shortcut)
+        if (!IsWebTab && e.Data.GetData(LauncherRegistrationRules.DragFormat) is LauncherRegistrationDragInfo registration)
         {
-            AddWindowsMenuShortcut(shortcut, destinationId, null, false); e.Handled = true; return;
+            AddLauncherRegistration(registration, destinationId, null, false); e.Handled = true; return;
         }
         if (ExternalDropRules.TryGetUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
         if (IsWebTab || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
@@ -321,7 +321,7 @@ public partial class EditorWindow : Window
         }
         else
         {
-            if (!IsWebTab && e.Data.GetData(WindowsMenuShortcutRegistrationRules.DragFormat) is WindowsMenuShortcutDragInfo)
+            if (!IsWebTab && e.Data.GetData(LauncherRegistrationRules.DragFormat) is LauncherRegistrationDragInfo)
             {
                 var container = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var targetNode = container?.DataContext as LauncherNode;
                 var relativeY = container is null || container.ActualHeight <= 0 ? .5 : e.GetPosition(container).Y / container.ActualHeight;
@@ -340,12 +340,12 @@ public partial class EditorWindow : Window
         if (!e.Data.GetDataPresent(NodeDragFormat))
         {
             var externalTarget = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject); var destinationId = externalTarget?.DataContext switch { GroupNode group => group.Id, LauncherNode node when Tab is not null => FindParentId(Tab.Children, node.Id), _ => null };
-            if (!IsWebTab && e.Data.GetData(WindowsMenuShortcutRegistrationRules.DragFormat) is WindowsMenuShortcutDragInfo shortcut)
+            if (!IsWebTab && e.Data.GetData(LauncherRegistrationRules.DragFormat) is LauncherRegistrationDragInfo registration)
             {
                 var shortcutTargetNode = externalTarget?.DataContext as LauncherNode;
                 var shortcutRelativeY = externalTarget is null || externalTarget.ActualHeight <= 0 ? .5 : e.GetPosition(externalTarget).Y / externalTarget.ActualHeight;
                 var shortcutEnterGroup = shortcutTargetNode is GroupNode && shortcutRelativeY is >= .25 and <= .75;
-                AddWindowsMenuShortcut(shortcut, shortcutEnterGroup ? shortcutTargetNode!.Id : destinationId, shortcutEnterGroup ? null : shortcutTargetNode?.Id, shortcutRelativeY > .5);
+                AddLauncherRegistration(registration, shortcutEnterGroup ? shortcutTargetNode!.Id : destinationId, shortcutEnterGroup ? null : shortcutTargetNode?.Id, shortcutRelativeY > .5);
                 e.Handled = true; return;
             }
             if (ExternalDropRules.TryGetUrl(e.Data, out var url)) { AddDroppedUrl(url, destinationId); e.Handled = true; return; }
@@ -363,26 +363,37 @@ public partial class EditorWindow : Window
         var tabId = Tab.Id;
         Commit(data => MoveNodes(data, drag.SourceTabId, tabId, drag.NodeIds, parentId, targetId, after), tabId);
     }
-    private void AddWindowsMenuShortcut(WindowsMenuShortcutDragInfo source, string? parentId, string? targetId, bool after)
+    private void AddLauncherRegistration(LauncherRegistrationDragInfo source, string? parentId, string? targetId, bool after)
     {
         if (Tab is null || IsWebTab) return;
-        if (!WindowsMenuShortcutRegistrationRules.IsValidSource(source) || !File.Exists(source.ShortcutPath))
+        if (!LauncherRegistrationRules.IsValidSource(source))
         {
-            MessageBox.Show("Windows Menuのショートカットが見つからないか、登録できる形式ではありません。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("起動項目を登録できる形式ではありません。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        var tabId = Tab.Id; FileItem? added = null;
+        if (source.Kind == LauncherRegistrationKind.StoreApp)
+        {
+            if (!_app.TryCreateStoreAppShortcut(Tab.Id, parentId, targetId, after, source.Name, source.Target, source.Icon, out _, out var storeError))
+                MessageBox.Show(storeError, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (source.Kind == LauncherRegistrationKind.File && !File.Exists(source.Target) || source.Kind == LauncherRegistrationKind.Directory && !Directory.Exists(source.Target))
+        {
+            MessageBox.Show("起動対象が見つかりません。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var tabId = Tab.Id; LauncherNode? added = null;
         if (!Commit(data =>
         {
             var tab = data.Tabs.First(t => t.Id == tabId);
             var collection = parentId is null ? tab.Children : FindGroup(tab.Children, parentId)?.Children ?? throw new InvalidDataException("登録先Groupが見つかりません。");
-            if (!WindowsMenuShortcutRegistrationRules.TryCreateFileItem(source, collection, out var item) || item is null)
-                throw new InvalidDataException("Windows Menuのショートカットを登録できません。");
+            if (!LauncherRegistrationRules.TryCreateNode(source, collection, out var item) || item is null)
+                throw new InvalidDataException("起動項目を登録できません。");
             var index = targetId is null ? collection.Count : collection.ToList().FindIndex(node => node.Id == targetId);
             if (index < 0) index = collection.Count; else if (after) index++;
             collection.Insert(index, item); NormalizeOrders(tab.Children); added = item;
         }, tabId)) return;
-        TryAddIcon(added!.Id, added.Target, added.Name, tabId);
+        if (added is FileItem file && file.Icon is null) TryAddIcon(file.Id, file.Target, file.Name, tabId);
     }
     private void AddDroppedUrl(string target, string? destinationId)
     {

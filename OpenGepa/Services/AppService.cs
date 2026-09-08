@@ -95,7 +95,7 @@ public sealed class AppService
     public void Initialize()
     {
         Paths.EnsureWritable();
-        var result = Store.Load(); Data = result.Data; ThemePalette.Apply(Data.Appearance);
+        var result = Store.Load(); Data = result.Data; ApplyTheme();
         if (result.Source is DataSource.Backup or DataSource.LastGood)
             MessageBox.Show($"{result.Source}から設定を復旧しました。", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
@@ -152,7 +152,7 @@ public sealed class AppService
     {
         try
         {
-            var candidate = Store.Clone(Data); change(candidate); DataSaveQueue.SaveNowAsync(candidate, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = candidate; ThemePalette.Apply(Data.Appearance); ClearUsageRuntimeTabs();
+            var candidate = Store.Clone(Data); change(candidate); DataSaveQueue.SaveNowAsync(candidate, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = candidate; ApplyTheme(); ClearUsageRuntimeTabs();
             DataChanged?.Invoke(this, EventArgs.Empty); error = ""; return true;
         }
         catch (Exception ex) { error = ex.Message; return false; }
@@ -178,7 +178,15 @@ public sealed class AppService
 
     public void ReplaceData(OpenGepaData data)
     {
-        DataSaveQueue.SaveNowAsync(data, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = data; ThemePalette.Apply(Data.Appearance); ClearUsageRuntimeTabs(); DataChanged?.Invoke(this, EventArgs.Empty);
+        DataSaveQueue.SaveNowAsync(data, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = data; ApplyTheme(); ClearUsageRuntimeTabs(); DataChanged?.Invoke(this, EventArgs.Empty);
+    }
+    private void ApplyTheme()
+    {
+        var application = System.Windows.Application.Current;
+        if (application is null) return;
+        if (application.Dispatcher.CheckAccess()) { ThemePalette.Apply(Data.Appearance); return; }
+        try { application.Dispatcher.BeginInvoke(() => ThemePalette.Apply(Data.Appearance)); }
+        catch (InvalidOperationException) { }
     }
 
     public void SelectTab(string id)
@@ -361,13 +369,62 @@ public sealed class AppService
         }
         catch (Exception ex) { error = ex.Message; return false; }
     }
+    /// <summary>ストアアプリを起動する管理ショートカットを通常ランチャーへ登録します。</summary>
+    public bool TryCreateStoreAppShortcut(string tabId, string? parentId, string? targetId, bool after, string displayName, string aumid, string? sourceIcon, out FileItem? item, out string error)
+    {
+        item = null;
+        string? shortcut = null;
+        try
+        {
+            if (!NameRules.IsValid(displayName, out error)) return false;
+            if (string.IsNullOrWhiteSpace(aumid) || !aumid.Contains('!')) { error = "ストアアプリのAUMIDが不正です。"; return false; }
+            var initialDestination = GetManagedShortcutDestination(Data, tabId, parentId);
+            var initialName = UrlRegistrationRules.UniqueName(displayName, initialDestination);
+            shortcut = ManagedShortcutService.CreateStoreApp(aumid, initialName);
+            var store = new StoreAppItem { Name = initialName, Aumid = aumid, Icon = sourceIcon };
+            var candidate = new FileItem { Name = initialName, Target = shortcut, Icon = IconService.TryCaptureUsageIcon(store, sourceIcon, "store-shortcut:" + aumid) };
+            if (!TryCommit(data =>
+            {
+                var destination = GetManagedShortcutDestination(data, tabId, parentId);
+                candidate.Name = UrlRegistrationRules.UniqueName(displayName, destination);
+                var index = targetId is null ? destination.Count : destination.ToList().FindIndex(node => node.Id == targetId);
+                if (index < 0) index = destination.Count; else if (after) index++;
+                destination.Insert(index, candidate);
+                var tab = data.Tabs.First(tab => tab.Id == tabId); NormalizeNodeOrders(tab.Children);
+            }, out error))
+            {
+                ManagedShortcutService.Delete(shortcut);
+                return false;
+            }
+            item = candidate;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (shortcut is not null) ManagedShortcutService.Delete(shortcut);
+            error = ex.Message;
+            return false;
+        }
+    }
     private static ObservableCollection<LauncherNode> EnsureManagedShortcutDestination(OpenGepaData data, string tabId, string? parentId, string name)
+    {
+        var destination = GetManagedShortcutDestination(data, tabId, parentId);
+        if (destination.Any(node => NameRules.Normalize(DataValidator.NodeLabel(node)).Equals(name, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException($"同じGroup内に「{name}」が既にあります。");
+        return destination;
+    }
+    private static ObservableCollection<LauncherNode> GetManagedShortcutDestination(OpenGepaData data, string tabId, string? parentId)
     {
         var tab = data.Tabs.FirstOrDefault(tab => tab.Id == tabId) ?? throw new InvalidDataException("App Launcherが見つかりません。");
         if (tab.IsSystemTab || tab.IsWebTab) throw new InvalidDataException("このタブにはショートカットを作成できません。");
-        var destination = parentId is null ? tab.Children : (FindNode(tab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("登録先Groupが見つかりません。");
-        if (destination.Any(node => NameRules.Normalize(DataValidator.NodeLabel(node)).Equals(name, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException($"同じGroup内に「{name}」が既にあります。");
-        return destination;
+        return parentId is null ? tab.Children : (FindNode(tab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("登録先Groupが見つかりません。");
+    }
+    private static void NormalizeNodeOrders(ObservableCollection<LauncherNode> nodes)
+    {
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            nodes[index].Order = index;
+            if (nodes[index] is GroupNode group) NormalizeNodeOrders(group.Children);
+        }
     }
 
     private static string CopyBaseName(string name)
