@@ -51,7 +51,7 @@ public sealed class ProfileService
         RewriteForProfile(profileData);
         using (var archive = ZipFile.Open(temp, ZipArchiveMode.Create))
         {
-            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 3, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.4.0" }, _app.Store.JsonOptions));
+            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 3, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.4.1" }, _app.Store.JsonOptions));
             WriteEntry(archive, "settings.json", JsonSerializer.Serialize(new { selectedTabId = profileData.SelectedTabId, appearance = profileData.Appearance, itemLaunch = profileData.ItemLaunch, defaultIcons = profileData.DefaultIcons, tabs = profileData.Tabs.Select(t => new { t.Id, t.IsVisible, t.Order }) }, _app.Store.JsonOptions));
             foreach (var tab in profileData.Tabs) WriteEntry(archive, $"menus/{tab.Id}.json", JsonSerializer.Serialize(tab, _app.Store.JsonOptions));
             foreach (var iconPath in EnumerateIcons(_app.Data).Distinct(StringComparer.OrdinalIgnoreCase))

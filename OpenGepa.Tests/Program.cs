@@ -114,6 +114,8 @@ static void TestDescriptions()
         Equal("よく使う\r\n道具", ((GroupNode)restored.Tabs.First(item => !item.IsSystemTab).Children[0]).Description);
         var legacy = store.Serialize(Data(new LauncherTab { Name = "Legacy" })).Replace("\"formatVersion\": 4", "\"formatVersion\": 3", StringComparison.Ordinal);
         Equal(4, store.Deserialize(legacy).FormatVersion);
+        var existing = new LauncherTab { Name = "Existing", Children = new ObservableCollection<LauncherNode> { new FileItem { Name = "WBS.xls", Target = "C:\\Work\\WBS.xls" } } };
+        Equal("WBS.xls", ((FileItem)store.Deserialize(store.Serialize(Data(existing))).Tabs.First(item => !item.IsSystemTab).Children.Single()).Name);
         Throws<InvalidDataException>(() => new DataValidator().Validate(Data(new LauncherTab { Name = "Too long", Description = new string('x', 4_001) })));
         Throws<InvalidDataException>(() => new DataValidator().Validate(Data(new LauncherTab { Name = "Separator", Children = new ObservableCollection<LauncherNode> { new SeparatorItem { Description = "不可" } } })));
     });
@@ -262,6 +264,17 @@ static void TestDirectoryCandidateDefaults()
     True(DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\DiskSpd64.exe"));
     True(DirectoryCandidateRules.IsInitiallySelected("C:\\Tools\\Tool.lnk"));
     Equal("Tool.exe", DirectoryCandidateRules.DefaultDisplayName("C:\\Tools\\Tool.exe"));
+    Equal("Tool.lnk", DirectoryCandidateRules.DefaultDisplayName("C:\\Tools\\Tool.lnk"));
+    Equal("build.bat", DirectoryCandidateRules.DefaultDisplayName("C:\\Tools\\build.bat"));
+    Equal("build.cmd", DirectoryCandidateRules.DefaultDisplayName("C:\\Tools\\build.cmd"));
+    Equal("build.ps1", DirectoryCandidateRules.DefaultDisplayName("C:\\Tools\\build.ps1"));
+    Equal("Tool.EXE", DirectoryCandidateRules.DefaultDisplayName("C:\\Tools\\Tool.EXE"));
+    Equal(">WBS.xls", DirectoryCandidateRules.DefaultDisplayName("C:\\Work\\WBS.xls"));
+    Equal(">議事録.doc", DirectoryCandidateRules.DefaultDisplayName("C:\\Work\\議事録.doc"));
+    Equal(">設計書.pdf", DirectoryCandidateRules.DefaultDisplayName("C:\\Work\\設計書.pdf"));
+    Equal(">image.png", DirectoryCandidateRules.DefaultDisplayName("C:\\Work\\image.png"));
+    Equal("Shortcut.lnk", DirectoryCandidateRules.DefaultShortcutDisplayName("C:\\Work\\Shortcut.lnk"));
+    Equal("WBS.xls", DirectoryCandidateRules.DefaultShortcutDisplayName("C:\\Work\\WBS.xls"));
 }
 
 static void TestFileDialogFilter()
@@ -834,13 +847,13 @@ static void TestUsageRecording()
     var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
     try
     {
-        var paths = new AppPaths(root); paths.EnsureWritable(); var node = new FileItem { Name = "Tool", Target = "C:\\Tool.exe" };
+        var paths = new AppPaths(root); paths.EnsureWritable(); var node = new FileItem { Name = ">WBS.xls", Target = "C:\\WBS.xls" };
         using var usage = new UsageService(paths, identity => identity.Kind == UsageIdentity.Node && identity.Id == node.Id ? node : null, (_, _) => "icon/last-recorded.png");
         usage.RecordSuccessfulLaunch(node); usage.RecordSuccessfulLaunch(node); usage.Flush();
         Equal(2, usage.Data.History.Count); Equal(2L, usage.Data.Frequencies.Single().TotalCount);
         Equal("icon/last-recorded.png", usage.Data.History[0].Icon);
-        var historyItem = (UsageDisplayItem)((GroupNode)usage.BuildHistory().Single()).Children.Single(); Equal("2回", historyItem.CountDetail); True(historyItem.TimeDetail!.StartsWith("最終 ", StringComparison.Ordinal));
-        Equal("2回", ((UsageDisplayItem)usage.BuildFrequency(UsagePeriods.Recent30Days).Single()).Detail);
+        var historyItem = (UsageDisplayItem)((GroupNode)usage.BuildHistory().Single()).Children.Single(); Equal(">WBS.xls", historyItem.Name); Equal("2回", historyItem.CountDetail); True(historyItem.TimeDetail!.StartsWith("最終 ", StringComparison.Ordinal));
+        var frequencyItem = (UsageDisplayItem)usage.BuildFrequency(UsagePeriods.Recent30Days).Single(); Equal(">WBS.xls", frequencyItem.Name); Equal("2回", frequencyItem.Detail);
         True(usage.TryRemoveHistoryTarget(historyItem.UsageKey, out var error), error); Equal(0, usage.Data.History.Count); Equal(2L, usage.Data.Frequencies.Single().TotalCount);
         usage.RecordSuccessfulLaunch(node); Equal(1, usage.Data.History.Count); Equal(3L, usage.Data.Frequencies.Single().TotalCount);
         True(usage.TryExclude(node, out error), error); Equal(0, usage.Data.History.Count); Equal(0, usage.Data.Frequencies.Count); Equal(1, usage.GetExclusions().Count);

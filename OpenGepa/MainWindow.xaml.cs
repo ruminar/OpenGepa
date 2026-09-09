@@ -412,7 +412,7 @@ public partial class MainWindow : Window
         if (!TrySelectWindowsMenuSource(parent, out var source)) return;
         var open = new OpenFileDialog { Title = "ショートカットの起動対象", CheckFileExists = true, Filter = DirectoryCandidateRules.FileItemDialogFilter };
         if (ShowDialog(open.ShowDialog) != true) return;
-        var dialog = new TextPromptDialog("Start Menuのショートカットを作成", "表示名", DirectoryCandidateRules.DefaultDisplayName(open.FileName)) { Owner = this };
+        var dialog = new TextPromptDialog("Start Menuのショートカットを作成", "表示名", DirectoryCandidateRules.DefaultShortcutDisplayName(open.FileName)) { Owner = this };
         if (ShowDialog(dialog.ShowDialog) != true) return;
         try
         {
@@ -494,7 +494,7 @@ public partial class MainWindow : Window
     {
         var open = new OpenFileDialog { Title = "ショートカットの起動対象", CheckFileExists = true, Filter = DirectoryCandidateRules.FileItemDialogFilter };
         if (ShowDialog(open.ShowDialog) != true) return;
-        var dialog = new TextPromptDialog("ショートカットを作成", "表示名", DirectoryCandidateRules.DefaultDisplayName(open.FileName)) { Owner = this };
+        var dialog = new TextPromptDialog("ショートカットを作成", "表示名", DirectoryCandidateRules.DefaultShortcutDisplayName(open.FileName)) { Owner = this };
         if (ShowDialog(dialog.ShowDialog) != true) return;
         if (!_app.TryCreateManagedShortcut(SelectedTabId, parentId, open.FileName, dialog.Value, out var item, out var error)) { ShowDialog(() => MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error)); return; }
         var icon = _app.IconService.TryExtract(item!.Target, item.Name); if (icon is not null) SetNodeIcon(item.Id, icon);

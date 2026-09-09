@@ -130,6 +130,7 @@ public sealed record ScanValidationResult(string? Error, IReadOnlySet<string> Co
 public static class DirectoryCandidateRules
 {
     private static readonly string[] ScriptExtensions = [".bat", ".cmd", ".ps1"];
+    private static readonly string[] ExecutableLikeExtensions = [".exe", ".lnk", ".bat", ".cmd", ".ps1"];
     public const string FileItemDialogFilter = "プログラムとショートカット|*.exe;*.lnk;*.bat;*.cmd;*.ps1|文書|*.pdf;*.txt;*.rtf;*.csv;*.doc;*.docx;*.xls;*.xlsx;*.ppt;*.pptx|画像|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp;*.ico|音声・動画|*.mp3;*.wav;*.flac;*.m4a;*.mp4;*.mkv;*.avi;*.wmv;*.mov";
     public static bool IsInitiallySelected(string path)
     {
@@ -144,7 +145,13 @@ public static class DirectoryCandidateRules
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"(?:^|[^a-z0-9])(?:x86|x32|win32|32bit|ia32|i386)(?:[^a-z0-9]|$)") || System.Text.RegularExpressions.Regex.IsMatch(lower, @"32l?$")) return false;
         return true;
     }
-    public static string DefaultDisplayName(string path) => Path.GetFileName(path);
+    public static string DefaultDisplayName(string path)
+    {
+        var fileName = Path.GetFileName(path);
+        return ExecutableLikeExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase) ? fileName : ">" + fileName;
+    }
+
+    public static string DefaultShortcutDisplayName(string path) => Path.GetFileName(path);
 }
 
 public static class DirectoryScanRootRules
