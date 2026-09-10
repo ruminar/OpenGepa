@@ -8,6 +8,7 @@ using OpenGepa.Services;
 var tests = new (string Name, Action Run)[]
 {
     ("Name normalization", TestNameNormalization),
+    ("Application version display", TestApplicationVersionDisplay),
     ("Sibling duplicate rejection", TestDuplicateNames),
     ("Empty launcher state", TestEmptyLauncherState),
     ("Icon-set app icon cycle", TestIconSetAppIconCycle),
@@ -337,6 +338,12 @@ static void TestCrossLauncherMove()
     EditorWindow.MoveNodes(data, source.Id, destination.Id, [sourceItem.Id], destinationGroup.Id, null, false);
     Equal(0, source.Children.Count); Equal(1, destinationGroup.Children.Count); True(ReferenceEquals(sourceItem, destinationGroup.Children[0])); Equal(0, destinationGroup.Children[0].Order);
     new DataValidator().Validate(data);
+}
+
+static void TestApplicationVersionDisplay()
+{
+    Equal("0.4.2", ApplicationVersionRules.Display(new Version(0, 4, 2, 9)));
+    Equal("不明", ApplicationVersionRules.Display(null));
 }
 
 static void TestCrossLauncherCopy()

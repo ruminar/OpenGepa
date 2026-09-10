@@ -595,7 +595,13 @@ public partial class MainWindow : Window
     private void ShowTabContextMenu(LauncherTab? tab, FrameworkElement target, bool keyboard)
     {
         var menu = new ContextMenu();
-        if (tab is null) AddNewTabItems(menu);
+        if (tab is null)
+        {
+            AddNewTabItems(menu);
+            menu.Items.Add(new Separator());
+            menu.Items.Add(Menu("設定", _app.ShowSettings));
+            menu.Items.Add(Menu("このアプリについて", ShowAbout));
+        }
         else if (tab.IsSystemTab)
         {
             if (tab.Kind is not LauncherTabKinds.History and not LauncherTabKinds.Frequency) { menu.Items.Add(Menu("更新", RefreshSpecialTab)); menu.Items.Add(new Separator()); }
@@ -608,6 +614,11 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator()); menu.Items.Add(Menu("名前を変更", () => RenameTab(tab))); menu.Items.Add(Menu("アイコンを変更", () => ChangeTabIcon(tab))); menu.Items.Add(Menu("アイコンを標準に戻す", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).Icon = null))); menu.Items.Add(Menu("非表示にする", () => Commit(d => d.Tabs.First(x => x.Id == tab.Id).IsVisible = false))); menu.Items.Add(Menu("削除", () => DeleteTab(tab))); menu.Items.Add(new Separator()); menu.Items.Add(Menu("設定", _app.ShowSettings)); AddNewTabItems(menu);
         }
         TabsList.ContextMenu = menu; if (keyboard) OpenContextMenu(menu, target); else menu.IsOpen = true;
+    }
+    private void ShowAbout()
+    {
+        var version = ApplicationVersionRules.Display(GetType().Assembly.GetName().Version);
+        ShowDialog(() => MessageBox.Show($"OpenGepa {version}", "このアプリについて", MessageBoxButton.OK, MessageBoxImage.Information));
     }
     private void TabsList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
