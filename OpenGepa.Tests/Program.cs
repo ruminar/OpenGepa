@@ -703,8 +703,9 @@ static void TestWindowsMenuMerge()
     {
         Directory.CreateDirectory(Path.Combine(current, "Tools")); Directory.CreateDirectory(Path.Combine(allUsers, "Tools"));
         File.WriteAllText(Path.Combine(current, "Tools", "Same.lnk"), "current"); File.WriteAllText(Path.Combine(allUsers, "Tools", "Same.lnk"), "all"); File.WriteAllText(Path.Combine(allUsers, "Tools", "AllOnly.lnk"), "all");
-        var group = (WindowsMenuGroupNode)new WindowsMenuService(current, allUsers).Load(new WindowsMenuSettings()).Single();
+        var service = new WindowsMenuService(current, allUsers); var group = (WindowsMenuGroupNode)service.Load(new WindowsMenuSettings()).Single();
         Equal(2, group.Children.Count); var same = group.Children.OfType<WindowsMenuShortcutItem>().Single(item => item.Name == "Same"); Equal(WindowsMenuSource.CurrentUser, same.Source);
+        var refreshed = (WindowsMenuGroupNode)service.Load(new WindowsMenuSettings()).Single(); Equal(group.Id, refreshed.Id); Equal(same.Id, refreshed.Children.OfType<WindowsMenuShortcutItem>().Single(item => item.Name == "Same").Id);
     }
     finally { Directory.Delete(root, true); }
 }

@@ -1,4 +1,4 @@
-$version = "0.4.1"
+$version = "0.4.2"
 $publishDir = "artifacts\OpenGepa-$version-win-x64"
 $zipPath = "artifacts\OpenGepa-$version-win-x64.zip"
 

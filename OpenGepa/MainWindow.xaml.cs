@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private System.Windows.Controls.Primitives.Popup? _renamePopup;
     private LauncherNode? _renamingNode;
     private readonly Dictionary<string, HashSet<string>> _expandedByTab = new(StringComparer.OrdinalIgnoreCase);
+    private (string TabId, HashSet<string> Expanded)? _pendingRegistrationExpansion;
     private readonly Dictionary<string, string> _searchByTab = new(StringComparer.OrdinalIgnoreCase);
     private string? _renderedTabId;
     private readonly DispatcherTimer _deactivationTimer;
@@ -49,7 +50,10 @@ public partial class MainWindow : Window
 
     public void RefreshData(bool refreshEnvironment = false)
     {
-        Icon = WindowIconService.Load(_app); CaptureExpanded(_renderedTabId); _refreshing = true; var visible = _app.VisibleTabs; var selected = _app.SelectedTab; TabsList.ItemsSource = visible; TabsList.SelectedItem = selected; PinToggle.IsChecked = _app.Data.IsLauncherPinned; Topmost = !_app.Data.IsLauncherPinned; var title = selected is null ? "OpenGepa" : $"OpenGepa - {selected.Name}"; Title = _app.Data.Mcp.Enabled ? $"🟢 {title}" : title;
+        Icon = WindowIconService.Load(_app); var selected = _app.SelectedTab;
+        if (_pendingRegistrationExpansion is { } pending && selected?.Id == pending.TabId) _expandedByTab[pending.TabId] = pending.Expanded;
+        else CaptureExpanded(_renderedTabId);
+        _refreshing = true; var visible = _app.VisibleTabs; TabsList.ItemsSource = visible; TabsList.SelectedItem = selected; PinToggle.IsChecked = _app.Data.IsLauncherPinned; Topmost = !_app.Data.IsLauncherPinned; var title = selected is null ? "OpenGepa" : $"OpenGepa - {selected.Name}"; Title = _app.Data.Mcp.Enabled ? $"🟢 {title}" : title;
         _renderedTabId = selected?.Id; if (selected is not null) { _app.GetDisplayChildren(selected, refreshEnvironment); _app.RequestEnvironmentRefresh(selected); }
         FrequencyPeriodCombo.Visibility = selected?.Kind == LauncherTabKinds.Frequency ? Visibility.Visible : Visibility.Collapsed;
         FrequencyPeriodCombo.SelectedValue = _app.Data.Usage.FrequencyPeriod;
@@ -116,7 +120,7 @@ public partial class MainWindow : Window
     {
         var tab = _app.SelectedTab; if (tab is null) { LauncherTree.ItemsSource = null; return; } var search = NameRules.Normalize(SearchText.Text);
         var nodes = _app.GetDisplayChildren(tab);
-        if (search.Length == 0) { LauncherTree.ItemsSource = nodes; var expanded = _expandedByTab.TryGetValue(tab.Id, out var saved) ? saved : new HashSet<string>(StringComparer.OrdinalIgnoreCase); Dispatcher.BeginInvoke(() => RestoreExpanded(expanded)); return; }
+        if (search.Length == 0) { LauncherTree.ItemsSource = nodes; var expanded = _expandedByTab.TryGetValue(tab.Id, out var saved) ? saved : new HashSet<string>(StringComparer.OrdinalIgnoreCase); Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() => { RestoreExpanded(expanded); if (IsVisible && _pendingRegistrationExpansion is { } pending && pending.TabId == tab.Id && ReferenceEquals(pending.Expanded, expanded)) _pendingRegistrationExpansion = null; })); return; }
         if (captureState) CaptureExpanded(tab.Id); LauncherTree.ItemsSource = Filter(nodes, search, tab.Kind != LauncherTabKinds.History); Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(ExpandAll));
     }
     private static ObservableCollection<LauncherNode> Filter(IEnumerable<LauncherNode> nodes, string text, bool matchGroupNames)
@@ -216,7 +220,14 @@ public partial class MainWindow : Window
         if (_launcherRegistrationDrag is { } registration)
         {
             _launcherRegistrationDrag = null;
-            DragDrop.DoDragDrop(LauncherTree, new System.Windows.DataObject(LauncherRegistrationRules.DragFormat, registration), System.Windows.DragDropEffects.Copy);
+            var tab = _app.SelectedTab;
+            if (tab is not null)
+            {
+                CaptureExpanded(tab.Id);
+                _pendingRegistrationExpansion = (tab.Id, new HashSet<string>(_expandedByTab.GetValueOrDefault(tab.Id) ?? [], StringComparer.OrdinalIgnoreCase));
+            }
+            var effect = DragDrop.DoDragDrop(LauncherTree, new System.Windows.DataObject(LauncherRegistrationRules.DragFormat, registration), System.Windows.DragDropEffects.Copy);
+            if (effect != System.Windows.DragDropEffects.Copy) _pendingRegistrationExpansion = null;
             return;
         }
         var id = _treeDragNodeId!; _treeDragNodeId = null;
@@ -725,7 +736,19 @@ public partial class MainWindow : Window
             ExpandAll(item);
         }
     }
-    private void RestoreExpanded(IReadOnlySet<string> ids) { foreach (var item in EnumerateContainers(LauncherTree)) if (item.DataContext is GroupNode group) item.IsExpanded = ids.Contains(group.Id); }
+    private void RestoreExpanded(IReadOnlySet<string> ids) => RestoreExpanded(LauncherTree, ids);
+    private static void RestoreExpanded(ItemsControl parent, IReadOnlySet<string> ids)
+    {
+        parent.UpdateLayout();
+        foreach (var value in parent.Items)
+        {
+            if (parent.ItemContainerGenerator.ContainerFromItem(value) is not TreeViewItem { DataContext: GroupNode group } item) continue;
+            item.IsExpanded = ids.Contains(group.Id);
+            if (!item.IsExpanded) continue;
+            item.UpdateLayout();
+            RestoreExpanded(item, ids);
+        }
+    }
     private static IEnumerable<TreeViewItem> EnumerateContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; foreach (var child in EnumerateContainers(item)) yield return child; } }
     private static IEnumerable<TreeViewItem> EnumerateVisibleContainers(ItemsControl root) { foreach (var value in root.Items) if (root.ItemContainerGenerator.ContainerFromItem(value) is TreeViewItem item) { yield return item; if (item.IsExpanded) foreach (var child in EnumerateVisibleContainers(item)) yield return child; } }
     private static LauncherNode? FindNode(IEnumerable<LauncherNode>? nodes, string id) { if (nodes is null) return null; foreach (var node in nodes) { if (node.Id == id) return node; if (node is GroupNode group) { var found = FindNode(group.Children, id); if (found is not null) return found; } } return null; }
