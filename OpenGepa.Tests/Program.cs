@@ -38,6 +38,8 @@ var tests = new (string Name, Action Run)[]
     ("Launcher tab duplication", TestLauncherTabDuplication),
     ("Launcher tab deletion removes data and selects replacement", TestLauncherTabDeletion),
     ("Cross-launcher move", TestCrossLauncherMove),
+    ("Ctrl-copy keeps source launcher items independent", TestCrossLauncherCopy),
+    ("Scoped data change leaves unrelated launcher views alone", TestScopedDataChanged),
     ("Small icon size is preserved", TestSmallIconSizeIsPreserved),
     ("Directory scan root group", TestDirectoryScanRootGroup),
     ("Destination choices", TestDestinationChoices),
@@ -335,6 +337,39 @@ static void TestCrossLauncherMove()
     EditorWindow.MoveNodes(data, source.Id, destination.Id, [sourceItem.Id], destinationGroup.Id, null, false);
     Equal(0, source.Children.Count); Equal(1, destinationGroup.Children.Count); True(ReferenceEquals(sourceItem, destinationGroup.Children[0])); Equal(0, destinationGroup.Children[0].Order);
     new DataValidator().Validate(data);
+}
+
+static void TestCrossLauncherCopy()
+{
+    var sourceFile = new FileItem { Name = "Tool.exe", Target = "C:\\Tools\\Tool.exe", Icon = "icon/tool.png", Description = "source" };
+    var sourceGroup = new GroupNode { Name = "Tools", Icon = "icon/group.png", Description = "group" }; sourceGroup.Children.Add(sourceFile);
+    var source = new LauncherTab { Name = "Source", Order = 0, Children = new ObservableCollection<LauncherNode> { sourceGroup } };
+    var existing = new GroupNode { Name = "Tools", Order = 0 };
+    var destination = new LauncherTab { Name = "Target", Order = 1, Children = new ObservableCollection<LauncherNode> { existing } };
+    var data = new OpenGepaData { SelectedTabId = source.Id, Tabs = new ObservableCollection<LauncherTab> { source, destination } };
+
+    EditorWindow.CopyNodes(data, source.Id, destination.Id, [sourceGroup.Id], null, null, false);
+
+    Equal(1, source.Children.Count); True(ReferenceEquals(sourceGroup, source.Children[0]));
+    Equal(2, destination.Children.Count);
+    var copy = (GroupNode)destination.Children[1]; Equal("Tools_1", copy.Name); True(copy.Id != sourceGroup.Id); Equal("group", copy.Description);
+    var copiedFile = (FileItem)copy.Children.Single(); True(copiedFile.Id != sourceFile.Id); Equal(sourceFile.Target, copiedFile.Target); Equal(sourceFile.Icon, copiedFile.Icon); Equal("source", copiedFile.Description);
+    new DataValidator().Validate(data);
+}
+
+static void TestScopedDataChanged()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var app = AppService.Create(root); app.Initialize();
+        var sourceId = app.Data.Tabs.First(tab => !tab.IsSystemTab).Id;
+        True(app.TryDuplicateTab(sourceId, out var targetId, out var duplicateError), duplicateError);
+        DataChangedEventArgs? received = null; app.DataChanged += (_, args) => received = args;
+        True(app.TryCommit(data => data.Tabs.Single(tab => tab.Id == targetId).Name = "Changed", new HashSet<string>(StringComparer.OrdinalIgnoreCase) { targetId }, out var error), error);
+        True(received is not null); True(!received!.AffectsTab(sourceId)); True(received.AffectsTab(targetId));
+    }
+    finally { Directory.Delete(root, true); }
 }
 
 static void TestSmallIconSizeIsPreserved()

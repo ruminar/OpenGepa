@@ -33,6 +33,13 @@ public static class RuntimeTabCacheRules
     }
 }
 
+/// <summary>変更を受け取る側が、表示中のApp Launcherを更新すべきか判断するための通知情報です。</summary>
+public sealed class DataChangedEventArgs(IReadOnlySet<string>? changedTabIds) : EventArgs
+{
+    public IReadOnlySet<string>? ChangedTabIds { get; } = changedTabIds;
+    public bool AffectsTab(string? tabId) => ChangedTabIds is null || tabId is null || ChangedTabIds.Contains(tabId);
+}
+
 public sealed class AppService
 {
     private MainWindow? _launcher;
@@ -82,7 +89,7 @@ public sealed class AppService
     public StartupService StartupService { get; }
     public ProfileService ProfileService { get; }
     public OpenGepaData Data { get; private set; } = null!;
-    public event EventHandler? DataChanged;
+    public event EventHandler<DataChangedEventArgs>? DataChanged;
     public event EventHandler? EnvironmentDataChanged;
     public event EventHandler? UsageDataChanged;
 
@@ -148,7 +155,9 @@ public sealed class AppService
         }
     }
 
-    public bool TryCommit(Action<OpenGepaData> change, out string error)
+    public bool TryCommit(Action<OpenGepaData> change, out string error) => TryCommit(change, null, out error);
+
+    public bool TryCommit(Action<OpenGepaData> change, IReadOnlySet<string>? changedTabIds, out string error)
     {
         try
         {
@@ -157,7 +166,7 @@ public sealed class AppService
             change(candidate);
             PreserveWindowsMenuRuntime(current, candidate);
             DataSaveQueue.SaveNowAsync(candidate, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = candidate; ApplyTheme(); ClearUsageRuntimeTabs();
-            DataChanged?.Invoke(this, EventArgs.Empty); error = ""; return true;
+            DataChanged?.Invoke(this, new DataChangedEventArgs(changedTabIds)); error = ""; return true;
         }
         catch (Exception ex) { error = ex.Message; return false; }
     }
@@ -188,7 +197,7 @@ public sealed class AppService
         {
             Data.IsLauncherPinned = pinned;
             RequestDeferredSave();
-            DataChanged?.Invoke(this, EventArgs.Empty);
+            DataChanged?.Invoke(this, new DataChangedEventArgs(null));
             error = string.Empty;
             return true;
         }
@@ -201,7 +210,7 @@ public sealed class AppService
 
     public void ReplaceData(OpenGepaData data)
     {
-        DataSaveQueue.SaveNowAsync(data, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = data; ApplyTheme(); ClearUsageRuntimeTabs(); DataChanged?.Invoke(this, EventArgs.Empty);
+        DataSaveQueue.SaveNowAsync(data, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = data; ApplyTheme(); ClearUsageRuntimeTabs(); DataChanged?.Invoke(this, new DataChangedEventArgs(null));
     }
     private void ApplyTheme()
     {
@@ -217,7 +226,7 @@ public sealed class AppService
         if (Data.SelectedTabId == id) return;
         Data.SelectedTabId = id;
         RequestDeferredSave();
-        DataChanged?.Invoke(this, EventArgs.Empty);
+        DataChanged?.Invoke(this, new DataChangedEventArgs(null));
     }
 
     /// <summary>アプリ終了前に、選択タブなどの遅延保存を確実に完了します。</summary>

@@ -39,7 +39,7 @@ public partial class MainWindow : Window
         InitializeComponent(); _app = app;
         _deactivationTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMilliseconds(200) };
         _deactivationTimer.Tick += (_, _) => CompleteDeactivation();
-        _app.DataChanged += (_, _) => Dispatcher.BeginInvoke(() => RefreshData());
+        _app.DataChanged += (_, e) => { if (e.AffectsTab(_renderedTabId)) Dispatcher.BeginInvoke(() => RefreshData()); };
         _app.EnvironmentDataChanged += (_, _) => Dispatcher.BeginInvoke(() => RefreshData());
         _app.UsageDataChanged += (_, _) => Dispatcher.BeginInvoke(() => RefreshData());
     }
@@ -181,6 +181,11 @@ public partial class MainWindow : Window
             return;
         }
         if ((Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.None && !_pressedTreeExpander && _app.SelectedTab is { IsSystemTab: false } && _pressedTreeItem?.DataContext is LauncherNode node) { _treeDragStart = e.GetPosition(LauncherTree); _treeDragNodeId = node.Id; }
+        if (!_pressedTreeExpander && _app.SelectedTab is { IsSystemTab: false } && _pressedTreeItem?.DataContext is LauncherNode launcherNode && LauncherRegistrationRules.TryCreateDragInfo(launcherNode, out var launcherRegistration))
+        {
+            _treeDragStart = e.GetPosition(LauncherTree);
+            _launcherRegistrationDrag = launcherRegistration;
+        }
     }
     private async void LauncherTree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
@@ -218,7 +223,9 @@ public partial class MainWindow : Window
         if (_launcherRegistrationDrag is { } registration)
         {
             _launcherRegistrationDrag = null;
-            DragDrop.DoDragDrop(LauncherTree, new System.Windows.DataObject(LauncherRegistrationRules.DragFormat, registration), System.Windows.DragDropEffects.Copy);
+            var data = new System.Windows.DataObject(LauncherRegistrationRules.DragFormat, registration);
+            if (_treeDragNodeId is { } sourceId) { data.SetData(TreeReorderDragFormat, sourceId); _treeDragNodeId = null; }
+            DragDrop.DoDragDrop(LauncherTree, data, System.Windows.DragDropEffects.Copy | System.Windows.DragDropEffects.Move);
             return;
         }
         var id = _treeDragNodeId!; _treeDragNodeId = null;

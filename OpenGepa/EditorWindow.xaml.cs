@@ -38,7 +38,7 @@ public partial class EditorWindow : Window
         InitializeComponent(); _app = app; _tabId = tabId;
         EditorTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler((_, _) => Dispatcher.BeginInvoke(RestoreTreeState)));
         EditorTree.AddHandler(TreeViewItem.CollapsedEvent, new RoutedEventHandler((_, e) => { if (e.OriginalSource is TreeViewItem { DataContext: EditorRootNode } root) Dispatcher.BeginInvoke(() => root.IsExpanded = true); }));
-        _app.DataChanged += (_, _) => Dispatcher.Invoke(RefreshData);
+        _app.DataChanged += (_, e) => { if (e.AffectsTab(_tabId)) Dispatcher.Invoke(RefreshData); };
         Loaded += (_, _) => Dispatcher.BeginInvoke(EnsureRootExpanded, System.Windows.Threading.DispatcherPriority.Loaded);
     }
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { if (!App.IsExiting) { e.Cancel = true; Hide(); } }
@@ -321,7 +321,7 @@ public partial class EditorWindow : Window
         if (Math.Abs(current.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(current.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         var ids = GetSelectedNodes().Select(x => x.Id).ToList();
         if (ids.Count == 0 || Tab is null) return;
-        System.Windows.DragDrop.DoDragDrop(EditorTree, new System.Windows.DataObject(NodeDragFormat, new NodeDragInfo(Tab.Id, ids)), System.Windows.DragDropEffects.Move);
+        System.Windows.DragDrop.DoDragDrop(EditorTree, new System.Windows.DataObject(NodeDragFormat, new NodeDragInfo(Tab.Id, ids)), System.Windows.DragDropEffects.Move | System.Windows.DragDropEffects.Copy);
     }
     private void EditorTree_DragOver(object sender, System.Windows.DragEventArgs e)
     {
@@ -331,7 +331,7 @@ public partial class EditorWindow : Window
             var relativeY = container is null || container.ActualHeight <= 0 ? .5 : e.GetPosition(container).Y / container.ActualHeight;
             var enterGroup = targetNode is GroupNode && relativeY is >= .25 and <= .75;
             if (container is null || enterGroup) ClearDropInsertion(); else ShowDropInsertion(container, relativeY > .5);
-            e.Effects = System.Windows.DragDropEffects.Move; e.Handled = true;
+            e.Effects = IsCopyDrag(e) ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.Move; e.Handled = true;
         }
         else
         {
@@ -375,7 +375,12 @@ public partial class EditorWindow : Window
         var parentId = enterGroup ? targetNode!.Id : FindParentId(Tab.Children, targetNode?.Id);
         var targetId = enterGroup ? null : targetNode?.Id; var after = relativeY > .5;
         var tabId = Tab.Id;
-        Commit(data => MoveNodes(data, drag.SourceTabId, tabId, drag.NodeIds, parentId, targetId, after), tabId);
+        var copy = IsCopyDrag(e);
+        Commit(data =>
+        {
+            if (copy) CopyNodes(data, drag.SourceTabId, tabId, drag.NodeIds, parentId, targetId, after);
+            else MoveNodes(data, drag.SourceTabId, tabId, drag.NodeIds, parentId, targetId, after);
+        }, tabId, copy ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) { tabId } : null);
     }
     private void AddLauncherRegistration(LauncherRegistrationDragInfo source, string? parentId, string? targetId, bool after)
     {
@@ -427,9 +432,9 @@ public partial class EditorWindow : Window
         if (_dropAdorner is not null && _dropAdornerLayer is not null) _dropAdornerLayer.Remove(_dropAdorner);
         _dropAdorner = null; _dropAdornerLayer = null;
     }
-    private bool Commit(Action<OpenGepaData> action, string? tabId)
+    private bool Commit(Action<OpenGepaData> action, string? tabId, IReadOnlySet<string>? changedTabIds = null)
     {
-        if (_app.TryCommit(action, out var error)) return true;
+        if (_app.TryCommit(action, changedTabIds, out var error)) return true;
         MessageBox.Show(error, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); return false;
     }
     private static GroupNode? FindGroup(IEnumerable<LauncherNode> nodes, string id) => FindNode(nodes, id) as GroupNode;
@@ -446,6 +451,7 @@ public partial class EditorWindow : Window
     }
     private static string? FindParentId(IEnumerable<LauncherNode> nodes, string? id)
     { if (id is null) return null; foreach (var group in nodes.OfType<GroupNode>()) { if (group.Children.Any(x => x.Id == id)) return group.Id; var found = FindParentId(group.Children, id); if (found is not null) return found; } return null; }
+    private static bool IsCopyDrag(System.Windows.DragEventArgs e) => (e.KeyStates & DragDropKeyStates.ControlKey) != 0;
     public static void MoveNodes(OpenGepaData data, string sourceTabId, string targetTabId, IReadOnlyList<string> sourceIds, string? parentId, string? targetId, bool after)
     {
         var sourceTab = data.Tabs.FirstOrDefault(t => t.Id == sourceTabId) ?? throw new InvalidDataException("移動元のApp Launcherが見つかりません。");
@@ -469,6 +475,41 @@ public partial class EditorWindow : Window
         foreach (var source in sources) newCollection.Insert(index++, source);
         NormalizeOrders(sourceTab.Children);
         if (sourceTabId != targetTabId) NormalizeOrders(targetTab.Children);
+    }
+    public static void CopyNodes(OpenGepaData data, string sourceTabId, string targetTabId, IReadOnlyList<string> sourceIds, string? parentId, string? targetId, bool after)
+    {
+        var sourceTab = data.Tabs.FirstOrDefault(t => t.Id == sourceTabId) ?? throw new InvalidDataException("コピー元のApp Launcherが見つかりません。");
+        var targetTab = data.Tabs.FirstOrDefault(t => t.Id == targetTabId) ?? throw new InvalidDataException("コピー先のApp Launcherが見つかりません。");
+        var selected = sourceIds.Distinct(StringComparer.OrdinalIgnoreCase).Select(id => FindNode(sourceTab.Children, id) ?? throw new InvalidDataException("コピー元が見つかりません。")).ToList();
+        var selectedIds = selected.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var sources = selected.Where(node => !HasSelectedAncestor(sourceTab.Children, node.Id, selectedIds)).OrderBy(node => NodeOrder(sourceTab.Children, node.Id)).ToList();
+        if (sources.Count == 0) return;
+        if (targetTab.IsWebTab && Walk(sources).Any(node => node is not GroupNode and not UrlItem and not SeparatorItem)) throw new InvalidDataException("WebランチャーにはURLと区切り線以外をコピーできません。");
+        var destination = parentId is null ? targetTab.Children : (FindNode(targetTab.Children, parentId) as GroupNode)?.Children ?? throw new InvalidDataException("コピー先Groupが見つかりません。");
+        var index = targetId is null ? destination.Count : destination.ToList().FindIndex(node => node.Id == targetId);
+        if (index < 0) index = destination.Count; else if (after) index++;
+        foreach (var source in sources) destination.Insert(index++, CloneNode(source, destination));
+        NormalizeOrders(targetTab.Children);
+    }
+    private static LauncherNode CloneNode(LauncherNode source, ObservableCollection<LauncherNode> destination) => source switch
+    {
+        GroupNode group => CloneGroup(group, destination),
+        FileItem file => new FileItem { Name = UrlRegistrationRules.UniqueName(file.Name, destination), Target = file.Target, Icon = file.Icon, Description = file.Description, IsTargetMissing = file.IsTargetMissing },
+        UrlItem url => new UrlItem { Name = UrlRegistrationRules.UniqueName(url.Name, destination), Target = url.Target, Icon = url.Icon, Description = url.Description },
+        DirectoryItem directory => CloneDirectory(directory, destination),
+        SeparatorItem => new SeparatorItem(),
+        _ => throw new InvalidDataException("この種類の項目はコピーできません。")
+    };
+    private static GroupNode CloneGroup(GroupNode source, ObservableCollection<LauncherNode> destination)
+    {
+        var copy = new GroupNode { Name = UrlRegistrationRules.UniqueName(source.Name, destination), Icon = source.Icon, Description = source.Description };
+        foreach (var child in source.Children) copy.Children.Add(CloneNode(child, copy.Children));
+        return copy;
+    }
+    private static DirectoryItem CloneDirectory(DirectoryItem source, ObservableCollection<LauncherNode> destination)
+    {
+        if (destination.Any(node => DataValidator.NodeLabel(node).Equals(source.Target, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("コピー先には同じDirectory参照が既にあります。");
+        return new DirectoryItem { Target = source.Target, Icon = source.Icon, Description = source.Description };
     }
     private static int NodeOrder(IEnumerable<LauncherNode> nodes, string id)
     {
