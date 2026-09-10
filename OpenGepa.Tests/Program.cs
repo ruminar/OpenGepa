@@ -64,6 +64,7 @@ var tests = new (string Name, Action Run)[]
     ("Store app refresh is cached and single-flight", TestStoreAppRefreshCache),
     ("Tray toggle uses pre-click window state", TestTrayToggleRules),
     ("Windows Menu merges current-user shortcuts first", TestWindowsMenuMerge),
+    ("Windows Menu cache survives unrelated commit", TestWindowsMenuRuntimeCacheSurvivesUnrelatedCommit),
     ("Bookmark HTML imports atomically into timestamp root", TestBookmarkImport),
     ("Bookmark separators round trip as HR", TestBookmarkSeparatorRoundTrip),
     ("Separator persists and is allowed in Web launchers", TestSeparatorPersistence),
@@ -706,6 +707,29 @@ static void TestWindowsMenuMerge()
         var service = new WindowsMenuService(current, allUsers); var group = (WindowsMenuGroupNode)service.Load(new WindowsMenuSettings()).Single();
         Equal(2, group.Children.Count); var same = group.Children.OfType<WindowsMenuShortcutItem>().Single(item => item.Name == "Same"); Equal(WindowsMenuSource.CurrentUser, same.Source);
         var refreshed = (WindowsMenuGroupNode)service.Load(new WindowsMenuSettings()).Single(); Equal(group.Id, refreshed.Id); Equal(same.Id, refreshed.Children.OfType<WindowsMenuShortcutItem>().Single(item => item.Name == "Same").Id);
+    }
+    finally { Directory.Delete(root, true); }
+}
+
+static void TestWindowsMenuRuntimeCacheSurvivesUnrelatedCommit()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var app = AppService.Create(root); app.Initialize();
+        var windowsMenu = app.Data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.WindowsMenu);
+        var cached = new ObservableCollection<LauncherNode> { new WindowsMenuGroupNode { Id = "windows-menu-group", Name = "Tools" } };
+        windowsMenu.RuntimeChildren = cached;
+
+        var launcherId = app.Data.Tabs.First(tab => !tab.IsSystemTab).Id;
+        True(app.TryCommit(data => data.Tabs.Single(tab => tab.Id == launcherId).Children.Add(new FileItem { Name = "Tool", Target = "C:\\Tools\\Tool.exe" }), out var error), error);
+        var afterUnrelatedCommit = app.Data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.WindowsMenu);
+        True(ReferenceEquals(cached, afterUnrelatedCommit.RuntimeChildren));
+        True(RuntimeTabCacheRules.CanReuse(afterUnrelatedCommit, DateOnly.FromDateTime(DateTime.Now)));
+
+        True(app.TryCommit(data => data.WindowsMenu.FoldersFirst = !data.WindowsMenu.FoldersFirst, out error), error);
+        var afterSettingsChange = app.Data.Tabs.Single(tab => tab.Kind == LauncherTabKinds.WindowsMenu);
+        True(afterSettingsChange.RuntimeChildren is null);
     }
     finally { Directory.Delete(root, true); }
 }

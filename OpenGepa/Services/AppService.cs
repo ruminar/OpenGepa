@@ -152,11 +152,34 @@ public sealed class AppService
     {
         try
         {
-            var candidate = Store.Clone(Data); change(candidate); DataSaveQueue.SaveNowAsync(candidate, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = candidate; ApplyTheme(); ClearUsageRuntimeTabs();
+            var current = Data;
+            var candidate = Store.Clone(current);
+            change(candidate);
+            PreserveWindowsMenuRuntime(current, candidate);
+            DataSaveQueue.SaveNowAsync(candidate, NextPersistenceVersion()).GetAwaiter().GetResult(); Data = candidate; ApplyTheme(); ClearUsageRuntimeTabs();
             DataChanged?.Invoke(this, EventArgs.Empty); error = ""; return true;
         }
         catch (Exception ex) { error = ex.Message; return false; }
     }
+
+    /// <summary>
+    /// Windows Menu の取得結果はローカル環境のランタイム情報であり、通常ランチャーだけの保存で読み直す必要はありません。
+    /// 設定が変わったときだけキャッシュを無効化します。
+    /// </summary>
+    private static void PreserveWindowsMenuRuntime(OpenGepaData current, OpenGepaData candidate)
+    {
+        if (!HasSameWindowsMenuSettings(current.WindowsMenu, candidate.WindowsMenu)) return;
+        var currentTab = current.Tabs.FirstOrDefault(tab => tab.Kind == LauncherTabKinds.WindowsMenu);
+        var candidateTab = candidate.Tabs.FirstOrDefault(tab => tab.Kind == LauncherTabKinds.WindowsMenu);
+        if (currentTab?.RuntimeChildren is null || candidateTab is null) return;
+        candidateTab.RuntimeChildren = currentTab.RuntimeChildren;
+        candidateTab.RuntimeChildrenLocalDate = currentTab.RuntimeChildrenLocalDate;
+    }
+
+    private static bool HasSameWindowsMenuSettings(WindowsMenuSettings left, WindowsMenuSettings right) =>
+        left.AllowCurrentUserEdit == right.AllowCurrentUserEdit &&
+        left.AllowAllUsersEdit == right.AllowAllUsersEdit &&
+        left.FoldersFirst == right.FoldersFirst;
 
     public bool TrySetLauncherPinned(bool pinned, out string error)
     {
