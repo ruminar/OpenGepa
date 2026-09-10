@@ -32,6 +32,13 @@ New-Item -ItemType Directory -Path "$publishDir\iconSet" -Force | Out-Null
 Copy-Item -LiteralPath README.md -Destination "$publishDir\README.md"
 Copy-Item -LiteralPath RELEASE_NOTES.md -Destination "$publishDir\RELEASE_NOTES.md"
 
+$dotnetRoot = Split-Path -Parent (Get-Command dotnet -ErrorAction Stop).Source
+foreach ($licenseName in @("LICENSE.txt", "ThirdPartyNotices.txt")) {
+  $source = Join-Path $dotnetRoot $licenseName
+  if (-not (Test-Path -LiteralPath $source)) { throw ".NETライセンス文書が見つかりません: $source" }
+  Copy-Item -LiteralPath $source -Destination (Join-Path $publishDir $licenseName)
+}
+
 $readmePath = Join-Path $publishDir "README.md"
 $readme = [System.IO.File]::ReadAllText($readmePath)
 $runtimeRequirement = "- [.NET 10 Windows Desktop Runtime x64](https://dotnet.microsoft.com/download/dotnet/10.0) がインストール済みであること"
@@ -58,6 +65,8 @@ try {
     "OpenGepa.Mcp.deps.json",
     "OpenGepa.Mcp.runtimeconfig.json",
     "opengepa.default.json",
+    "LICENSE.txt",
+    "ThirdPartyNotices.txt",
     "coreclr.dll",
     "hostfxr.dll",
     "hostpolicy.dll"
