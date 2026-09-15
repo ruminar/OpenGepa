@@ -702,7 +702,9 @@ static void TestMediaPresetHierarchy()
 {
     var service = new PresetService(new StoreAppsService([new StoreAppEntry("Placeholder", "Placeholder!App")]));
     var unrecorded = service.AvailableDefinitions().Where(item => !item.RecordLaunch).Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-    True(unrecorded.SetEquals(["desktop", "lock", "sign-out", "sleep", "shutdown", "restart", "media-previous", "media-play-pause", "media-next", "media-stop", "media-volume-down", "media-volume-up", "media-volume-mute"]));
+    True(unrecorded.SetEquals(["desktop", "show-desktop", "lock", "sign-out", "sleep", "shutdown", "restart", "media-previous", "media-play-pause", "media-next", "media-stop", "media-volume-down", "media-volume-up", "media-volume-mute"]));
+    var display = service.Load(new PresetSettings()).OfType<GroupNode>().Single(group => group.Name == "ディスプレイ");
+    True(display.Children.OfType<PresetItem>().Select(item => item.PresetId).Take(3).SequenceEqual(["display-settings", "display-switch", "show-desktop"]));
     var media = service.Load(new PresetSettings()).OfType<GroupNode>().Single(group => group.Name == "メディア コントロール");
     True(media.Children.OfType<PresetItem>().Select(item => item.PresetId).SequenceEqual(["media-previous", "media-play-pause", "media-next", "media-stop"]));
     True(media.Children.OfType<PresetItem>().Select(item => item.Icon).SequenceEqual(["iconSet/mediaPrevious.png", "iconSet/mediaPlayPause.png", "iconSet/mediaNext.png", "iconSet/mediaStop.png"]));
@@ -1022,7 +1024,7 @@ static void TestDeferredPersistence()
 static void TestMcpPresetPolicy()
 {
     var service = new PresetService(new StoreAppsService([new StoreAppEntry("Placeholder", "Placeholder!App")]));
-    var definitions = service.AllDefinitions(); Equal(65, definitions.Count); Equal(65, definitions.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count());
+    var definitions = service.AllDefinitions(); Equal(67, definitions.Count); Equal(67, definitions.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count());
     var expectedAllowed = new[]
     {
         "settings", "search", "explorer", "desktop", "documents", "pictures", "music", "recent", "this-pc", "recycle-bin",
