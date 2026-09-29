@@ -705,6 +705,8 @@ static void TestMediaPresetHierarchy()
     True(unrecorded.SetEquals(["desktop", "show-desktop", "lock", "sign-out", "sleep", "shutdown", "restart", "media-previous", "media-play-pause", "media-next", "media-stop", "media-volume-down", "media-volume-up", "media-volume-mute"]));
     var display = service.Load(new PresetSettings()).OfType<GroupNode>().Single(group => group.Name == "ディスプレイ");
     True(display.Children.OfType<PresetItem>().Select(item => item.PresetId).Take(3).SequenceEqual(["display-settings", "display-switch", "show-desktop"]));
+    var system = service.Load(new PresetSettings()).OfType<GroupNode>().Single(group => group.Name == "システムとデバイス");
+    Equal("all-control-panel-items", ((PresetItem)system.Children[0]).PresetId);
     var media = service.Load(new PresetSettings()).OfType<GroupNode>().Single(group => group.Name == "メディア コントロール");
     True(media.Children.OfType<PresetItem>().Select(item => item.PresetId).SequenceEqual(["media-previous", "media-play-pause", "media-next", "media-stop"]));
     True(media.Children.OfType<PresetItem>().Select(item => item.Icon).SequenceEqual(["iconSet/mediaPrevious.png", "iconSet/mediaPlayPause.png", "iconSet/mediaNext.png", "iconSet/mediaStop.png"]));
@@ -1024,7 +1026,9 @@ static void TestDeferredPersistence()
 static void TestMcpPresetPolicy()
 {
     var service = new PresetService(new StoreAppsService([new StoreAppEntry("Placeholder", "Placeholder!App")]));
-    var definitions = service.AllDefinitions(); Equal(67, definitions.Count); Equal(67, definitions.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count());
+    var definitions = service.AllDefinitions(); Equal(68, definitions.Count); Equal(68, definitions.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count());
+    var allControlPanelItems = definitions.Single(item => item.Id == "all-control-panel-items");
+    Equal("システムとデバイス", allControlPanelItems.Group); Equal("explorer.exe", allControlPanelItems.FileName); Equal("shell:::{ED7BA470-8E54-465E-825C-99712043E01C}", allControlPanelItems.Arguments); True(!allControlPanelItems.AllowMcp);
     var expectedAllowed = new[]
     {
         "settings", "search", "explorer", "desktop", "documents", "pictures", "music", "recent", "this-pc", "recycle-bin",
