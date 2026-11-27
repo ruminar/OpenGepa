@@ -5,7 +5,10 @@ namespace OpenGepa;
 
 public static class InstanceIdentity
 {
-    public static string CurrentId => FromDirectory(AppContext.BaseDirectory);
+    private static string? _rootDirectory;
+    public static string RootDirectory => _rootDirectory ?? AppContext.BaseDirectory;
+    public static void ConfigureRoot(string root) => _rootDirectory = Path.GetFullPath(root);
+    public static string CurrentId => FromDirectory(RootDirectory);
     public static string MutexName => $@"Local\OpenGepa.Singleton.{CurrentId}";
     public static string ShowEventName => $@"Local\OpenGepa.Show.{CurrentId}";
     public static string McpShutdownEventName => $@"Local\OpenGepa.McpShutdown.{CurrentId}";

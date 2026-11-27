@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>OpenGepa</AssemblyName>
+    <Version>0.5.0</Version>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>../OpenGepa/Assets/OpenGepa.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../OpenGepa.Update/OpenGepa.Update.csproj" />
+    <EmbeddedResource Include="$(UpdateProfileFile)" LogicalName="OpenGepa.UpdateProfile.json" Condition="'$(UpdateProfileFile)' != ''" />
+  </ItemGroup>
+</Project>

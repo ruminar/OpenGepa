@@ -93,9 +93,9 @@ public sealed class AppService
     public event EventHandler? EnvironmentDataChanged;
     public event EventHandler? UsageDataChanged;
 
-    public static AppService Create(string? baseDirectory = null)
+    public static AppService Create(string? baseDirectory = null, string? resourceDirectory = null)
     {
-        var paths = new AppPaths(baseDirectory);
+        var paths = new AppPaths(baseDirectory, resourceDirectory);
         return new AppService(paths, new DataStore(paths, new DataValidator()));
     }
 

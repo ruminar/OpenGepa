@@ -1,5 +1,8 @@
 <Solution>
   <Project Path="OpenGepa/OpenGepa.csproj" />
+  <Project Path="OpenGepa.Update/OpenGepa.Update.csproj" />
+  <Project Path="OpenGepa.Launcher/OpenGepa.Launcher.csproj" />
   <Project Path="OpenGepa.Mcp/OpenGepa.Mcp.csproj" />
+  <Project Path="OpenGepa.Mcp.Launcher/OpenGepa.Mcp.Launcher.csproj" />
   <Project Path="OpenGepa.Tests/OpenGepa.Tests.csproj" />
 </Solution>

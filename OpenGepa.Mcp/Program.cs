@@ -2,11 +2,14 @@ using ModelContextProtocol.Server;
 using Microsoft.Extensions.AI;
 using OpenGepa;
 
+if (args is ["--portable", var root]) InstanceIdentity.ConfigureRoot(root);
+else if (args.Length != 0) { Environment.ExitCode = 1; return; }
+
 await using var backend = new McpBackendClient();
 var tools = new OpenGepaTools(backend);
 var options = new McpServerOptions
 {
-    ServerInfo = new() { Name = "OpenGepa.Mcp", Version = "0.4.3" },
+    ServerInfo = new() { Name = "OpenGepa.Mcp", Version = "0.5.0" },
     ToolCollection =
     [
         McpServerTool.Create(tools.list_tabs, new() { Name = "list_tabs", Description = "OpenGepaの現在の縦タブ一覧を返します。" }),

@@ -32,5 +32,32 @@ public sealed class UpdateLayout
     public static void RequireFile(string path) { if ((File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0) throw new IOException("通常のファイルを指定してください。"); }
     public static void EnsureDirectory(string path) { Directory.CreateDirectory(path); RequireDirectory(path); }
     public static void WriteAtomic<T>(string path, T value) { var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp"; try { File.WriteAllText(temp, JsonSerializer.Serialize(value, UpdatePackage.Json)); if (Exists(path)) File.Replace(temp, path, null); else File.Move(temp, path); } finally { if (File.Exists(temp)) File.Delete(temp); } }
-    public void DeleteWorkDirectory(string path) { if (!Path.GetFullPath(path).StartsWith(UpdateDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(Path.Combine(path, ".update-work"))) throw new IOException("更新作業ディレクトリではありません。"); Directory.Delete(path, true); }
+    public void DeleteWorkDirectory(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if (!fullPath.StartsWith(UpdateDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            (File.GetAttributes(fullPath) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != FileAttributes.Directory ||
+            (File.GetAttributes(Path.Combine(fullPath, ".update-work")) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+            throw new IOException("更新作業ディレクトリではありません。");
+        DeleteDirectoryContents(fullPath);
+        Directory.Delete(fullPath);
+    }
+
+    private static void DeleteDirectoryContents(string path)
+    {
+        foreach (var child in Directory.EnumerateFileSystemEntries(path))
+        {
+            var attributes = File.GetAttributes(child);
+            if ((attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("更新作業ディレクトリ内にリンクがあります。");
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                DeleteDirectoryContents(child);
+                Directory.Delete(child);
+            }
+            else
+            {
+                File.Delete(child);
+            }
+        }
+    }
 }

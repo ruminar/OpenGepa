@@ -1,9 +1,12 @@
 using System.Collections.ObjectModel;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using OpenGepa;
 using OpenGepa.McpProtocol;
 using OpenGepa.Models;
 using OpenGepa.Services;
+using OpenGepa.Update;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -79,6 +82,7 @@ var tests = new (string Name, Action Run)[]
     ("Deferred persistence is serialized and does not overwrite newer data", TestDeferredPersistence),
     ("MCP refs, cursors, search, and atomic description updates", TestMcpCoordinator),
     ("Gemini array schema avoids union types", TestGeminiSchemaCompatibility),
+    ("Signed update package validates and preserves user data", TestSignedUpdatePackage),
 };
 
 var failed = 0;
@@ -1080,6 +1084,40 @@ static void TestGeminiSchemaCompatibility()
     Equal("array", normalized["type"]!.GetValue<string>());
     Equal("string", normalized["items"]!["type"]!.GetValue<string>());
     True(normalized["default"] is JsonArray { Count: 0 });
+}
+
+static void TestSignedUpdatePackage()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N"));
+    var version = "0.5.1"; var zipPath = Path.Combine(root, "OpenGepa-0.5.1-win-x64.zip");
+    Directory.CreateDirectory(root);
+    try
+    {
+        CreateUpdateZip(zipPath, version, null);
+        var manifest = new UpdateManifest("OpenGepa", "ruminar/OpenGepa", version, "win-x64", Path.GetFileName(zipPath), new FileInfo(zipPath).Length, UpdatePackage.HashFile(zipPath));
+        var manifestBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(manifest, UpdatePackage.Json);
+        using var rsa = RSA.Create(2048);
+        var profile = new UpdateProfile("ruminar/OpenGepa", "OpenGepa", new() { ["test"] = Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo()) });
+        var signatures = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new[] { new UpdateSignature("test", Convert.ToBase64String(rsa.SignData(manifestBytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pss))) }, UpdatePackage.Json);
+        var verified = UpdatePackage.ReadManifest(manifestBytes, signatures, profile, version);
+        var extracted = Path.Combine(root, "extracted");
+        using (var stream = File.OpenRead(zipPath)) { UpdatePackage.VerifyZip(stream, verified); UpdatePackage.Extract(stream, extracted, version); }
+        True(File.Exists(Path.Combine(extracted, "app", "versions", version, "opengepa.default.json")));
+
+        var unsafeZip = Path.Combine(root, "unsafe.zip"); CreateUpdateZip(unsafeZip, version, "opengepa.json");
+        using var unsafeStream = File.OpenRead(unsafeZip);
+        Throws<InvalidDataException>(() => UpdatePackage.Extract(unsafeStream, Path.Combine(root, "unsafe"), version));
+    }
+    finally { Directory.Delete(root, true); }
+}
+
+static void CreateUpdateZip(string path, string version, string? extraFile)
+{
+    var prefix = $"app/versions/{version}/";
+    using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+    foreach (var name in new[] { "OpenGepa.exe", "OpenGepa.Mcp.exe", "README.md", "RELEASE_NOTES.md", prefix + "OpenGepa.exe", prefix + "OpenGepa.dll", prefix + "OpenGepa.deps.json", prefix + "OpenGepa.runtimeconfig.json", prefix + "OpenGepa.Mcp.exe", prefix + "OpenGepa.Mcp.dll", prefix + "OpenGepa.Mcp.deps.json", prefix + "OpenGepa.Mcp.runtimeconfig.json", prefix + "opengepa.default.json", prefix + ".package-files.json" })
+        WriteZipEntry(archive, name, "test");
+    if (extraFile is not null) WriteZipEntry(archive, prefix + extraFile, "user data");
 }
 
 static IpcResponse McpCall(McpCoordinator coordinator, string session, string operation, object payload)

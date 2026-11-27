@@ -23,6 +23,9 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        string? portableRoot = null;
+        if (e.Args is ["--portable", var root]) { portableRoot = Path.GetFullPath(root); InstanceIdentity.ConfigureRoot(portableRoot); }
+        else if (e.Args.Length != 0) { Shutdown(1); return; }
         if (ElevatedWindowsMenuHelper.TryRun(e.Args, out var helperExitCode))
         {
             Shutdown(helperExitCode);
@@ -41,7 +44,7 @@ public partial class App : System.Windows.Application
         {
             _mcpShutdownEvent = new EventWaitHandle(false, EventResetMode.ManualReset, InstanceIdentity.McpShutdownEventName);
             _mcpShutdownEvent.Reset();
-            Services = AppService.Create();
+            Services = AppService.Create(portableRoot is null ? null : Path.Combine(portableRoot, "data"), AppContext.BaseDirectory);
             Services.Initialize();
             EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
                 new RoutedEventHandler((sender, _) => ThemePalette.ApplyWindowChrome((Window)sender, Services.Data.Appearance)));
@@ -64,6 +67,12 @@ public partial class App : System.Windows.Application
     }
 
     public void ExitApplication()
+        => ExitCore(0);
+
+    public void ExitForUpdate()
+        => ExitCore(OpenGepa.Update.UpdateLayout.ApplyExitCode);
+
+    private void ExitCore(int exitCode)
     {
         IsExiting = true;
         _mcpShutdownEvent?.Set();
@@ -71,7 +80,7 @@ public partial class App : System.Windows.Application
         _tray?.Dispose();
         var mcpPipeServer = _mcpPipeServer; _mcpPipeServer = null; mcpPipeServer?.Dispose();
         try { Services.FlushPersistence(); } catch (Exception ex) { MessageBox.Show($"設定の保存に失敗しました。\n\n{ex.Message}", "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); }
-        Shutdown();
+        Shutdown(exitCode);
     }
 
     protected override void OnExit(ExitEventArgs e)

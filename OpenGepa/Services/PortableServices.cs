@@ -30,8 +30,8 @@ public sealed class StartupService
         Directory.CreateDirectory(Path.GetDirectoryName(ShortcutPath)!);
         dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
         dynamic link = shell.CreateShortcut(ShortcutPath);
-        link.TargetPath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenGepa.exe");
-        link.WorkingDirectory = AppContext.BaseDirectory;
+        link.TargetPath = Path.Combine(InstanceIdentity.RootDirectory, "OpenGepa.exe");
+        link.WorkingDirectory = InstanceIdentity.RootDirectory;
         link.Description = "OpenGepa automatic startup";
         link.Save();
     }
@@ -51,7 +51,7 @@ public sealed class ProfileService
         RewriteForProfile(profileData);
         using (var archive = ZipFile.Open(temp, ZipArchiveMode.Create))
         {
-            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 3, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.4.3" }, _app.Store.JsonOptions));
+            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(new { format = "OpenGepaProfile", formatVersion = 3, createdAt = DateTimeOffset.Now, createdBy = "OpenGepa", appVersion = "0.5.0" }, _app.Store.JsonOptions));
             WriteEntry(archive, "settings.json", JsonSerializer.Serialize(new { selectedTabId = profileData.SelectedTabId, appearance = profileData.Appearance, itemLaunch = profileData.ItemLaunch, defaultIcons = profileData.DefaultIcons, tabs = profileData.Tabs.Select(t => new { t.Id, t.IsVisible, t.Order }) }, _app.Store.JsonOptions));
             foreach (var tab in profileData.Tabs) WriteEntry(archive, $"menus/{tab.Id}.json", JsonSerializer.Serialize(tab, _app.Store.JsonOptions));
             foreach (var iconPath in EnumerateIcons(_app.Data).Distinct(StringComparer.OrdinalIgnoreCase))

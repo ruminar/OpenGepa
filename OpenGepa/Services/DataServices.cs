@@ -8,13 +8,14 @@ namespace OpenGepa.Services;
 
 public sealed class AppPaths
 {
-    public AppPaths(string? baseDirectory = null) => BaseDirectory = Path.GetFullPath(baseDirectory ?? AppContext.BaseDirectory);
+    public AppPaths(string? baseDirectory = null, string? resourceDirectory = null) { BaseDirectory = Path.GetFullPath(baseDirectory ?? AppContext.BaseDirectory); ResourceDirectory = Path.GetFullPath(resourceDirectory ?? AppContext.BaseDirectory); }
     public string BaseDirectory { get; }
+    public string ResourceDirectory { get; }
     public string DataFile => Path.Combine(BaseDirectory, "opengepa.json");
     public string BackupFile => Path.Combine(BaseDirectory, "opengepa.backup.json");
     public string LastGoodFile => Path.Combine(BaseDirectory, "opengepa.lastgood.json");
     public string TemporaryFile => Path.Combine(BaseDirectory, "opengepa.tmp");
-    public string DefaultDataFile => Path.Combine(BaseDirectory, "opengepa.default.json");
+    public string DefaultDataFile => Path.Combine(ResourceDirectory, "opengepa.default.json");
     public string UsageFile => Path.Combine(BaseDirectory, "opengepa.usage.json");
     public string UsageTemporaryFile => Path.Combine(BaseDirectory, "opengepa.usage.tmp");
     public string IconDirectory => Path.Combine(BaseDirectory, "icon");

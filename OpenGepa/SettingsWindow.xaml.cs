@@ -2,6 +2,7 @@ using System.Windows;
 using Microsoft.Win32;
 using OpenGepa.Models;
 using OpenGepa.Services;
+using OpenGepa.Update;
 
 namespace OpenGepa;
 
@@ -36,13 +37,29 @@ public partial class SettingsWindow : Window
         FoldersFirstRadio.IsChecked = _app.Data.WindowsMenu.FoldersFirst; ShortcutsFirstRadio.IsChecked = !_app.Data.WindowsMenu.FoldersFirst;
         PresetItemsList.ItemsSource = _app.PresetService.AvailableDefinitions().Select(item => new PresetVisibilityRow { Id = item.Id, Name = $"{item.Group.Replace("/", " / ")} / {item.Name}", IsVisible = !_app.Data.Presets.HiddenItemIds.Contains(item.Id) }).ToList();
         McpEnabledCheck.IsChecked = _app.Data.Mcp.Enabled; McpLaunchCheck.IsChecked = _app.Data.Mcp.AllowLaunch; McpDescriptionEditCheck.IsChecked = _app.Data.Mcp.AllowDescriptionEdit; McpPermissionsPanel.IsEnabled = _app.Data.Mcp.Enabled;
-        McpExecutablePathText.Text = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "OpenGepa.Mcp.exe"));
+        McpExecutablePathText.Text = Path.GetFullPath(Path.Combine(InstanceIdentity.RootDirectory, "OpenGepa.Mcp.exe"));
         UsageExclusionsList.ItemsSource = _app.UsageService.GetExclusions();
         _refreshing = false; UpdateMoveButtons();
         if (restoreFocus && TabsList.SelectedItem is LauncherTab selected)
             Dispatcher.BeginInvoke(() => { if (TabsList.ItemContainerGenerator.ContainerFromItem(selected) is System.Windows.Controls.ListBoxItem item) item.Focus(); }, System.Windows.Threading.DispatcherPriority.Input);
     }
     private void StartupCheck_Changed(object sender, RoutedEventArgs e) { if (_refreshing) return; try { _app.StartupService.SetEnabled(StartupCheck.IsChecked == true); } catch (Exception ex) { MessageBox.Show(ex.Message, "OpenGepa", MessageBoxButton.OK, MessageBoxImage.Error); RefreshData(); } }
+    private async void CheckForUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        var profile = UpdateProfile.Load(typeof(App).Assembly); var layout = new OpenGepa.Update.UpdateLayout(InstanceIdentity.RootDirectory);
+        if (profile is null || !OpenGepa.Update.UpdateLayout.Exists(layout.StatePath)) { MessageBox.Show("署名済みポータブル版でのみ自動更新を利用できます。初回はOpenGepa 0.5.0以降の配布ZIPを手動で展開してください。", "アプリの更新", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+        UpdateCheckButton.IsEnabled = false;
+        try
+        {
+            using var updates = new GitHubUpdates(profile); var current = typeof(App).Assembly.GetName().Version!; var candidate = await updates.CheckAsync(new Version(current.Major, current.Minor, current.Build), CancellationToken.None);
+            if (candidate is null) { MessageBox.Show($"現在の版 {current.Major}.{current.Minor}.{current.Build} は最新版です。", "アプリの更新", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+            if (MessageBox.Show($"OpenGepa {candidate.Version} へ更新しますか？\n\n{candidate.Notes}", "アプリの更新", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            UpdateCheckButton.Content = "更新を準備中…"; await updates.StageAsync(candidate, layout, CancellationToken.None); ((App)System.Windows.Application.Current).ExitForUpdate();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or System.Net.Http.HttpRequestException or OperationCanceledException)
+        { MessageBox.Show(ex.Message, "アプリの更新を完了できません", MessageBoxButton.OK, MessageBoxImage.Error); }
+        finally { if (IsLoaded) { UpdateCheckButton.Content = "アプリの更新を確認"; UpdateCheckButton.IsEnabled = true; } }
+    }
     private void ThemeCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (_refreshing || ThemeCombo.SelectedValue is not string theme) return;

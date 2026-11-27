@@ -36,7 +36,7 @@ public sealed class McpBackendClient : IAsyncDisposable
         if (_pipe?.IsConnected == true) return;
         ResetPipe();
         if (await TryConnectAsync(150, cancellationToken)) return;
-        var directory = AppContext.BaseDirectory;
+        var directory = InstanceIdentity.RootDirectory;
         var executable = Path.Combine(directory, "OpenGepa.exe");
         if (!File.Exists(executable)) throw new FileNotFoundException("隣接するOpenGepa.exeが見つかりません。", executable);
         Process.Start(new ProcessStartInfo(executable) { UseShellExecute = true, WorkingDirectory = directory });

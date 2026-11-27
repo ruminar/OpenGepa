@@ -78,13 +78,22 @@ public static partial class UpdatePackage
             var allowedDirectory = directory && (name == "app/" || name == "app/versions/" || name == prefix);
             var allowedFile = !directory && (required.Contains(name) || name.StartsWith(prefix, StringComparison.Ordinal));
             if (!allowedDirectory && !allowedFile) throw new InvalidDataException($"更新ZIPに想定外のファイルがあります。{name}");
-            if (name.StartsWith("data/", StringComparison.OrdinalIgnoreCase) || (name.StartsWith(prefix, StringComparison.Ordinal) && relative[prefix.Length..].Split('/').Any(part => part is "icon" or "iconSet" or "shortcut" || part.StartsWith("opengepa", StringComparison.OrdinalIgnoreCase)))) throw new InvalidDataException($"更新ZIPに利用者データが含まれています。{name}");
+            if (name.StartsWith("data/", StringComparison.OrdinalIgnoreCase) ||
+                (name.StartsWith(prefix, StringComparison.Ordinal) && IsUserDataPath(relative[prefix.Length..])))
+                throw new InvalidDataException($"更新ZIPに利用者データが含まれています。{name}");
             if (directory) continue;
             if (entry.Length < 0 || entry.Length > MaximumZipBytes - total) throw new InvalidDataException("更新ZIPの展開サイズが上限を超えています。"); total += entry.Length;
             var target = Path.Combine(destination, relative.Replace('/', Path.DirectorySeparatorChar)); Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             using var input = entry.Open(); using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None); input.CopyTo(output); output.Flush(); required.Remove(name);
         }
         if (required.Count > 0) throw new InvalidDataException("更新ZIPに必要なファイルがありません。");
+    }
+
+    private static bool IsUserDataPath(string relative)
+    {
+        var parts = relative.Split('/');
+        if (parts.Any(part => part is "icon" or "iconSet" or "shortcut")) return true;
+        return parts.Length == 1 && parts[0] is "opengepa.json" or "opengepa.backup.json" or "opengepa.lastgood.json" or "opengepa.usage.json" or "opengepa.tmp" or "opengepa.usage.tmp";
     }
 
     private static void ValidateEntry(ZipArchiveEntry entry, string relative)
