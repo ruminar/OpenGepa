@@ -121,9 +121,9 @@ MCPから項目を起動する機能は設定で個別にOFFにできます。�
 
 ## アイコンと外観
 
-各ランチャー、Group、FileItem、DirectoryItem、UrlItemのアイコンを個別に変更できます。変更したアイコンは`icon/`にPNGとして保存されます。小さな画像は不必要に拡大せず、256pxを超える画像だけを縮小します。
+各ランチャー、Group、FileItem、DirectoryItem、UrlItemのアイコンを個別に変更できます。変更したアイコンは`data/icon/`にPNGとして保存されます。小さな画像は不必要に拡大せず、256pxを超える画像だけを縮小します。
 
-`iconSet/`には既定アイコンと初期アイコンセットを置けます。利用可能なアイコンセットと、ChatGPTを使った新しいセットの生成方法は、[`extras/icon-sets/`](extras/icon-sets/)を参照してください。
+`data/iconSet/`には既定アイコンと初期アイコンセットを置けます。利用可能なアイコンセットと、ChatGPTを使った新しいセットの生成方法は、[`extras/icon-sets/`](extras/icon-sets/)を参照してください。
 
 - `OpenGepa.ico`: アプリ本体・トレイのアイコン
 - `group_default.png`: Groupの既定アイコン
@@ -141,28 +141,31 @@ UrlItemでは、登録時または右クリックメニューからサイトア�
 
 ## 保存と復旧
 
-設定は編集を確定するたびに、アプリのあるディレクトリへ直ちに保存されます。
+設定は編集を確定するたびに、配布フォルダー内の`data/`へ直ちに保存されます。
 
 ```text
 OpenGepa/
 ├─ OpenGepa.exe
 ├─ OpenGepa.Mcp.exe
-├─ opengepa.default.json
-├─ opengepa.json
-├─ opengepa.backup.json
-├─ opengepa.lastgood.json
-├─ opengepa.usage.json
-├─ icon/
-├─ iconSet/
-└─ shortcut/
+├─ app/
+│  ├─ versions/
+│  └─ update/
+└─ data/
+   ├─ opengepa.json
+   ├─ opengepa.backup.json
+   ├─ opengepa.lastgood.json
+   ├─ opengepa.usage.json
+   ├─ icon/
+   ├─ iconSet/
+   └─ shortcut/
 ```
 
 - `opengepa.json`: 最新の保存データ
 - `opengepa.backup.json`: 一つ前の保存データ
 - `opengepa.lastgood.json`: 正常起動を確認できた保存データ
-- `opengepa.default.json`: `opengepa.json`がまだない最初の起動だけに使う初期設定。既存設定は上書きしません。
+- `app/versions/<version>/opengepa.default.json`: `opengepa.json`がまだない最初の起動だけに使う初期設定。既存設定は上書きしません。
 - `opengepa.usage.json`: 起動履歴、使用頻度、起動記録の除外設定。読み込めない場合もOpenGepaは空の起動記録で起動します。
-- `shortcut/`: 通常のアプリランチャーで作成したOpenGepa管理ショートカット
+- `data/shortcut/`: 通常のアプリランチャーで作成したOpenGepa管理ショートカット
 
 最新データを読み込めない場合は、バックアップまたは最後に正常起動できたデータから自動復旧します。
 

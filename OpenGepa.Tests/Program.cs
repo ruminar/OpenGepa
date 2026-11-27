@@ -18,6 +18,7 @@ var tests = new (string Name, Action Run)[]
     ("Tray icon set uses ICO", TestTrayIconSetUsesIco),
     ("Window icon follows tray icon set", TestWindowIconSet),
     ("Default node icons use iconSet", TestDefaultNodeIconsUseIconSet),
+    ("Icon paths resolve from portable data", TestIconPathResolution),
     ("Polymorphic round trip", TestRoundTrip),
     ("DirectoryItem has no name field", TestDirectoryItemHasNoNameField),
     ("Descriptions normalize, persist, and migrate", TestDescriptions),
@@ -187,6 +188,18 @@ static void TestDefaultNodeIconsUseIconSet()
         Equal("iconSet/group_default.png", iconSet.GetDefaultIcon("group"));
         iconSet.DeleteDefaultIcon("group"); True(iconSet.GetDefaultIcon("group") is null);
     });
+}
+
+static void TestIconPathResolution()
+{
+    var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+    try
+    {
+        var paths = new AppPaths(root); paths.EnsureWritable(); var icon = Path.Combine(paths.IconSetDirectory, "appIcon1.png"); File.WriteAllText(icon, "x");
+        Equal(icon, IconPathConverter.ResolvePath("iconSet/appIcon1.png", paths));
+        True(IconPathConverter.ResolvePath("../appIcon1.png", paths) is null);
+    }
+    finally { Directory.Delete(root, true); }
 }
 
 static void TestRoundTrip()

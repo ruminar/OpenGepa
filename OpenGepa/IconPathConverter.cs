@@ -14,11 +14,9 @@ public sealed class IconPathConverter : IValueConverter
         if (value is not string relative || string.IsNullOrWhiteSpace(relative)) return null;
         try
         {
-            var basePath = Path.GetFullPath(AppContext.BaseDirectory);
-            var fullPath = Path.GetFullPath(Path.Combine(basePath, relative));
-            var iconRoot = Path.Combine(basePath, "icon") + Path.DirectorySeparatorChar;
-            var iconSetRoot = Path.Combine(basePath, "iconSet") + Path.DirectorySeparatorChar;
-            if ((!fullPath.StartsWith(iconRoot, StringComparison.OrdinalIgnoreCase) && !fullPath.StartsWith(iconSetRoot, StringComparison.OrdinalIgnoreCase)) || !File.Exists(fullPath)) return null;
+            var paths = System.Windows.Application.Current is App ? App.Services.Paths : new AppPaths();
+            var fullPath = ResolvePath(relative, paths);
+            if (fullPath is null) return null;
             var decodeWidth = parameter is not null && int.TryParse(parameter.ToString(), out var requested) ? requested : 32;
             return LoadImage(fullPath, decodeWidth);
         }
@@ -26,6 +24,15 @@ public sealed class IconPathConverter : IValueConverter
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
+
+    public static string? ResolvePath(string relative, AppPaths paths)
+    {
+        var basePath = paths.BaseDirectory;
+        var fullPath = Path.GetFullPath(Path.Combine(basePath, relative));
+        var iconRoot = paths.IconDirectory + Path.DirectorySeparatorChar;
+        var iconSetRoot = paths.IconSetDirectory + Path.DirectorySeparatorChar;
+        return (fullPath.StartsWith(iconRoot, StringComparison.OrdinalIgnoreCase) || fullPath.StartsWith(iconSetRoot, StringComparison.OrdinalIgnoreCase)) && File.Exists(fullPath) ? fullPath : null;
+    }
 
     internal static BitmapImage LoadImage(string fullPath, int decodeWidth)
     {
