@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Runtime.InteropServices;
 using OpenGepa.Services;
+using OpenGepa.Update;
 
 namespace OpenGepa;
 
@@ -16,6 +17,7 @@ public partial class App : System.Windows.Application
     private TrayService? _tray;
     private HwndSource? _hotKeyWindow;
     private McpPipeServer? _mcpPipeServer;
+    private int _automaticUpdateCheckStarted;
     private const int WmHotKey = 0x0312;
 
     public static AppService Services { get; private set; } = null!;
@@ -57,6 +59,7 @@ public partial class App : System.Windows.Application
             _tray.Show();
             Services.StartupService.RepairShortcutIfEnabled();
             Services.Store.MarkLastGood(Services.Data);
+            Dispatcher.BeginInvoke(CheckForUpdateOnStartupAsync, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         }
         catch (Exception ex)
         {
@@ -71,6 +74,25 @@ public partial class App : System.Windows.Application
 
     public void ExitForUpdate()
         => ExitCore(OpenGepa.Update.UpdateLayout.ApplyExitCode);
+
+    private async void CheckForUpdateOnStartupAsync()
+    {
+        if (Interlocked.Exchange(ref _automaticUpdateCheckStarted, 1) != 0) return;
+        var profile = UpdateProfile.Load(typeof(App).Assembly); var layout = new UpdateLayout(InstanceIdentity.RootDirectory);
+        if (profile is null || !UpdateLayout.Exists(layout.StatePath)) return;
+        try
+        {
+            using var updates = new GitHubUpdates(profile); var current = typeof(App).Assembly.GetName().Version!;
+            var candidate = await updates.CheckAsync(new Version(current.Major, current.Minor, current.Build), CancellationToken.None);
+            if (candidate is null || MessageBox.Show($"OpenGepa {candidate.Version} へ更新しますか？\n\n{candidate.Notes}", "アプリの更新", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            await updates.StageAsync(candidate, layout, CancellationToken.None);
+            ExitForUpdate();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or System.Net.Http.HttpRequestException or OperationCanceledException)
+        {
+            // 起動時の確認失敗では常駐開始を妨げない。利用者は設定画面から再試行できる。
+        }
+    }
 
     private void ExitCore(int exitCode)
     {
