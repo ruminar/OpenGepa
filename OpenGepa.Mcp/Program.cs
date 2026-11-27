@@ -9,7 +9,7 @@ await using var backend = new McpBackendClient();
 var tools = new OpenGepaTools(backend);
 var options = new McpServerOptions
 {
-    ServerInfo = new() { Name = "OpenGepa.Mcp", Version = "0.5.0" },
+    ServerInfo = new() { Name = "OpenGepa.Mcp", Version = "0.5.1" },
     ToolCollection =
     [
         McpServerTool.Create(tools.list_tabs, new() { Name = "list_tabs", Description = "OpenGepaの現在の縦タブ一覧を返します。" }),
