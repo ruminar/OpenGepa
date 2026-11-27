@@ -15,25 +15,26 @@
 1. 使用したいZIPを選びます。
 2. OpenGepaを終了します。
 3. ZIPを、`OpenGepa.exe`があるディレクトリへ展開します。
-4. `OpenGepa.exe`と`iconSet`ディレクトリが同じ階層にあることを確認します。
+4. `data/iconSet`ディレクトリが作成され、9個のPNGファイルが入ったことを確認します。
 5. OpenGepaを起動します。
 
 ```text
 OpenGepa/
 ├─ OpenGepa.exe
-└─ iconSet/
-   ├─ appIcon1.png
-   ├─ appIcon2.png
-   ├─ urlIcon1.png
-   ├─ urlIcon2.png
-   ├─ winMenu.png
-   ├─ winStore.png
-   ├─ winCust.png
-   ├─ history.png
-   └─ frequency.png
+└─ data/
+   └─ iconSet/
+      ├─ appIcon1.png
+      ├─ appIcon2.png
+      ├─ urlIcon1.png
+      ├─ urlIcon2.png
+      ├─ winMenu.png
+      ├─ winStore.png
+      ├─ winCust.png
+      ├─ history.png
+      └─ frequency.png
 ```
 
-既存の`iconSet`がある場合、同名ファイルを置き換えると新しいデザインが適用されます。必要なら、置き換える前に現在の`iconSet`をバックアップしてください。
+既存の`data/iconSet`がある場合、同名ファイルを置き換えると新しいデザインが適用されます。必要なら、置き換える前に現在の`data/iconSet`をバックアップしてください。
 
 ## ChatGPTで新しいアイコンセットを作る
 
@@ -78,12 +79,13 @@ OpenGepa/
 | 3行2列 | 起動履歴 | `history.png` |
 | 3行3列 | 使用頻度 | `frequency.png` |
 
-完成した9ファイルを`iconSet`ディレクトリへ入れます。配布用ZIPを作る場合は、ZIPを展開した時に`iconSet`ディレクトリごと作成される構造にしてください。
+完成した9ファイルを`data/iconSet`ディレクトリへ入れます。配布用ZIPを作る場合は、ZIPを展開した時に`data/iconSet`ディレクトリごと作成される構造にしてください。
 
 ```text
 作成するZIP
-└─ iconSet/
-   └─ 9個のPNGファイル
+└─ data/
+   └─ iconSet/
+      └─ 9個のPNGファイル
 ```
 
 ## 生成依頼文を変更する場合
