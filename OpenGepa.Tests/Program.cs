@@ -1102,7 +1102,7 @@ static void TestGeminiSchemaCompatibility()
 static void TestSignedUpdatePackage()
 {
     var root = Path.Combine(Path.GetTempPath(), "OpenGepa.Tests", Guid.NewGuid().ToString("N"));
-    var version = "0.5.1"; var zipPath = Path.Combine(root, "OpenGepa-0.5.1-win-x64.zip");
+    var version = "0.5.2"; var zipPath = Path.Combine(root, "OpenGepa-0.5.2-win-x64.zip");
     Directory.CreateDirectory(root);
     try
     {

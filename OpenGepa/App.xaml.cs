@@ -26,13 +26,18 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         string? portableRoot = null;
-        if (e.Args is ["--portable", var root]) { portableRoot = Path.GetFullPath(root); InstanceIdentity.ConfigureRoot(portableRoot); }
-        else if (e.Args.Length != 0) { Shutdown(1); return; }
         if (ElevatedWindowsMenuHelper.TryRun(e.Args, out var helperExitCode))
         {
             Shutdown(helperExitCode);
             return;
         }
+        var hostedTray = e.Args is ["--portable-tray-host", _] && Console.IsInputRedirected;
+        if (e.Args is ["--portable", _] || hostedTray)
+        {
+            portableRoot = Path.GetFullPath(e.Args[1]);
+            InstanceIdentity.ConfigureRoot(portableRoot);
+        }
+        else if (e.Args.Length != 0) { Shutdown(1); return; }
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, InstanceIdentity.ShowEventName);
         _mutex = new Mutex(true, InstanceIdentity.MutexName, out var first);
         if (!first)
@@ -55,10 +60,17 @@ public partial class App : System.Windows.Application
             RegisterShowHotKey();
             _showRegistration = ThreadPool.RegisterWaitForSingleObject(
                 _showEvent, (_, _) => Dispatcher.BeginInvoke(Services.ShowLauncher), null, Timeout.Infinite, false);
-            _tray = new TrayService(Services);
-            _tray.Show();
             Services.StartupService.RepairShortcutIfEnabled();
             Services.Store.MarkLastGood(Services.Data);
+            if (hostedTray)
+            {
+                _ = Task.Run(ListenForTrayCommandsAsync);
+            }
+            else
+            {
+                _tray = new TrayService(Services);
+                _tray.Show();
+            }
             Dispatcher.BeginInvoke(CheckForUpdateOnStartupAsync, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         }
         catch (Exception ex)
@@ -74,6 +86,33 @@ public partial class App : System.Windows.Application
 
     public void ExitForUpdate()
         => ExitCore(OpenGepa.Update.UpdateLayout.ApplyExitCode);
+
+    private async Task ListenForTrayCommandsAsync()
+    {
+        try
+        {
+            using var input = new StreamReader(Console.OpenStandardInput());
+            while (await input.ReadLineAsync().ConfigureAwait(false) is { } command)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (IsExiting) return;
+                    switch (command)
+                    {
+                        case "toggle": Services.ShowLauncherFromTray(); break;
+                        case "settings": Services.ShowSettings(); break;
+                        case "exit": ExitApplication(); break;
+                    }
+                });
+                if (command == "exit") return;
+            }
+        }
+        catch (IOException) { }
+        catch (OperationCanceledException) { return; }
+
+        // The fixed launcher closed its private pipe.
+        _ = Dispatcher.BeginInvoke(new Action(() => { if (!IsExiting) ExitApplication(); }));
+    }
 
     private async void CheckForUpdateOnStartupAsync()
     {
@@ -96,6 +135,7 @@ public partial class App : System.Windows.Application
 
     private void ExitCore(int exitCode)
     {
+        if (IsExiting) return;
         IsExiting = true;
         _mcpShutdownEvent?.Set();
         foreach (var window in Windows.Cast<Window>().ToArray()) window.Close();
