@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Forms;
 using OpenGepa;
@@ -71,7 +72,7 @@ internal static class Program
             info.ArgumentList.Add("--portable-tray-host");
             info.ArgumentList.Add(layout.Root);
             using var process = Process.Start(info) ?? throw new IOException("OpenGepaを起動できません。");
-            tray.Connect(process.StandardInput);
+            tray.Connect(process);
             try { process.WaitForExit(); }
             finally { tray.Connect(null); }
             if (process.ExitCode != UpdateLayout.ApplyExitCode) return process.ExitCode;
@@ -126,7 +127,8 @@ internal sealed class TrayHost : IDisposable
     private readonly ContextMenuStrip _menu = new();
     private readonly System.Windows.Forms.Timer _iconTimer = new() { Interval = 2000 };
     private readonly string _dataDirectory;
-    private StreamWriter? _commands;
+    private sealed record TrayConnection(StreamWriter Commands, int ProcessId);
+    private TrayConnection? _connection;
     private (string? Path, DateTime Written)? _iconKey;
     private (DateTime Written, string? IconPath)? _legacyIcon;
     private bool _commandPending;
@@ -146,14 +148,20 @@ internal sealed class TrayHost : IDisposable
         _iconTimer.Start();
     }
 
-    public void Connect(StreamWriter? commands) => Volatile.Write(ref _commands, commands);
+    public void Connect(Process? process) =>
+        Volatile.Write(ref _connection, process is null ? null : new TrayConnection(process.StandardInput, process.Id));
 
     private async Task SendCommandAsync(string command)
     {
-        var commands = Volatile.Read(ref _commands);
-        if (commands is null || _commandPending) return;
+        var connection = Volatile.Read(ref _connection);
+        if (connection is null || _commandPending) return;
         _commandPending = true;
-        try { await commands.WriteLineAsync(command); }
+        try
+        {
+            // Windows can give the tray click's foreground permission to the child process.
+            if (command == "toggle") AllowSetForegroundWindow(connection.ProcessId);
+            await connection.Commands.WriteLineAsync(command);
+        }
         catch (IOException) { }
         catch (ObjectDisposedException) { }
         finally { _commandPending = false; }
@@ -233,7 +241,11 @@ internal sealed class TrayHost : IDisposable
         }
     }
 
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(int processId);
+
+    [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
 
     public void Dispose()
